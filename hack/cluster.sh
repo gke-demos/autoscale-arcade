@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bootstraps the Autoscale Arcade GKE cluster.
 #
-#   PROJECT_ID=… REGION=us-central1 CLUSTER=autoscale-arcade ./hack/cluster.sh [all|cluster|gvisor|storage|credentials|addons|verify|network]
+#   PROJECT_ID=… REGION=us-central1 CLUSTER=autoscale-arcade ./hack/cluster.sh [all|cluster|gvisor|spotpools|storage|credentials|addons|verify|network]
 #
 # Idempotent: every phase checks before it creates. Private nodes, DNS-only
 # control-plane endpoint (no public or private IP endpoint), Workload Identity,
@@ -28,6 +28,10 @@ GATEWAY_IP_NAME="${GATEWAY_IP_NAME:-autoscale-arcade-ip}"
 HOSTNAME_FQDN="${HOSTNAME_FQDN:-autoscale-arcade.demo.gke.ninja}"
 DNS_ZONE="${DNS_ZONE:-demo-gke-ninja}"
 CERT_MAP="${CERT_MAP:-star-demo-gke-ninja}"
+SPOT_POOL_ZONE="${SPOT_POOL_ZONE:-${REGION}-b}"
+SPOT_POOL_MAX="${SPOT_POOL_MAX:-6}"
+SPOT_OD_MACHINE_TYPE="${SPOT_OD_MACHINE_TYPE:-n4-standard-2}"
+SPOT_SPOT_MACHINE_TYPE="${SPOT_SPOT_MACHINE_TYPE:-n4d-standard-2}"
 
 phase="${1:-all}"
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
@@ -139,6 +143,35 @@ EOF
   done
 }
 
+# Spot On runs on two fixed, autoscaled node pools instead of a ComputeClass:
+# GKE Warden forbids combining a compute-class selector with the required
+# cloud.google.com/gke-spot node affinity that the workload-class webhook
+# emits for the on-demand share (docs/cabinets/spot-on.md). Both pools carry
+# the same label/taint so only checkout pods land on them; one zone keeps the
+# islands deterministic.
+create_spot_pools() {
+  local common=(--cluster "${CLUSTER}" --location "${REGION}" --project "${PROJECT_ID}"
+    --node-locations "${SPOT_POOL_ZONE}" --num-nodes 0
+    --enable-autoscaling --min-nodes 0 --max-nodes "${SPOT_POOL_MAX}" --location-policy ANY
+    --image-type cos_containerd --workload-metadata GKE_METADATA
+    --node-labels "arcade.demo/cabinet=spot" --node-taints "arcade.demo/spot-cabinet=true:NoSchedule"
+    --quiet)
+  if gcloud container node-pools describe spot-od --cluster "${CLUSTER}" --location "${REGION}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+    log "Node pool spot-od already exists"
+  else
+    log "Creating node pool spot-od (${SPOT_OD_MACHINE_TYPE}, on-demand, 0-${SPOT_POOL_MAX} in ${SPOT_POOL_ZONE})"
+    gcloud container node-pools create spot-od --machine-type "${SPOT_OD_MACHINE_TYPE}" "${common[@]}"
+  fi
+  if gcloud container node-pools describe spot-spot --cluster "${CLUSTER}" --location "${REGION}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+    log "Node pool spot-spot already exists"
+  else
+    log "Creating node pool spot-spot (${SPOT_SPOT_MACHINE_TYPE}, Spot, 0-${SPOT_POOL_MAX} in ${SPOT_POOL_ZONE})"
+    gcloud container node-pools create spot-spot --machine-type "${SPOT_SPOT_MACHINE_TYPE}" --spot "${common[@]}"
+  fi
+  gcloud container node-pools list --cluster "${CLUSTER}" --location "${REGION}" --project "${PROJECT_ID}" \
+    --filter='name~^spot-' --format='table(name,config.machineType,config.spot,autoscaling.minNodeCount,autoscaling.maxNodeCount,locations,status)'
+}
+
 verify_addons() {
   log "Addon health"
   kubectl get deploy -n cert-manager
@@ -189,7 +222,8 @@ case "${phase}" in
   addons)      get_credentials; install_addons; verify_addons ;;
   verify)      verify_addons ;;
   network)     create_network ;;
-  all)         ensure_apis; create_cluster; create_gvisor_pool; create_storage; get_credentials; install_addons; verify_addons; create_network ;;
+  spotpools)   create_spot_pools ;;
+  all)         ensure_apis; create_cluster; create_gvisor_pool; create_spot_pools; create_storage; get_credentials; install_addons; verify_addons; create_network ;;
   *) echo "unknown phase ${phase}"; exit 1 ;;
 esac
 log "Done (${phase})"
