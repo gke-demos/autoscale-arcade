@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -51,7 +53,12 @@ func TestSimCornerBonus(t *testing.T) {
 }
 
 func TestTickDetectsRestoreGap(t *testing.T) {
-	p := New(Config{Pod: "pet-0", Node: "n1", TickInterval: 100 * time.Millisecond, GapThreshold: 2 * time.Second})
+	// Simulate gVisor's /proc/gvisor/spec_environ for the restored pod.
+	environ := filepath.Join(t.TempDir(), "spec_environ")
+	if err := os.WriteFile(environ, []byte("PATH=/bin\x00NODE_NAME=n2\x00POD_NAME=pet-0\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := New(Config{Pod: "pet-0", Node: "n1", TickInterval: 100 * time.Millisecond, GapThreshold: 2 * time.Second, SpecEnviron: environ})
 	start := p.lastTick
 	now := start
 	for i := 0; i < 20; i++ {
@@ -67,7 +74,7 @@ func TestTickDetectsRestoreGap(t *testing.T) {
 		t.Fatal("7 s gap not detected as a restore")
 	}
 	s := p.Snapshot(now)
-	if s.Lives != 1 || s.Ticks != 21 || s.RestoredAt == "" || s.Pod != "pet-0" {
+	if s.Lives != 1 || s.Ticks != 21 || s.RestoredAt == "" || s.Pod != "pet-0" || s.Node != "n2" {
 		t.Fatalf("unexpected state after restore: %+v", s)
 	}
 	if got := p.frozenTotal(); got < 6*time.Second || got > 7*time.Second {
@@ -132,4 +139,18 @@ func TestRunServesAndReports(t *testing.T) {
 		t.Fatalf("healthz: %v %v", err, hz)
 	}
 	hz.Body.Close()
+}
+
+func TestSpecEnvironValue(t *testing.T) {
+	if got := specEnvironValue(filepath.Join(t.TempDir(), "missing"), "NODE_NAME"); got != "" {
+		t.Fatalf("missing file: got %q", got)
+	}
+	f := filepath.Join(t.TempDir(), "env")
+	_ = os.WriteFile(f, []byte("A=1\nNODE_NAME=gke-node-x\nB=x=y\n"), 0o600)
+	if got := specEnvironValue(f, "NODE_NAME"); got != "gke-node-x" {
+		t.Fatalf("got %q", got)
+	}
+	if got := specEnvironValue(f, "B"); got != "x=y" {
+		t.Fatalf("got %q", got)
+	}
 }

@@ -38,6 +38,7 @@ type Config struct {
 	ServerURL    string        // ARCADE_SERVER_URL; empty disables reporting
 	ReportPath   string        // default /api/pet
 	ListenAddr   string        // default :8080
+	SpecEnviron  string        // file with the restored pod's env (default /proc/gvisor/spec_environ)
 	Logger       *slog.Logger
 }
 
@@ -80,6 +81,9 @@ func New(cfg Config) *Pet {
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = envOr("PET_ADDR", ":8080")
 	}
+	if cfg.SpecEnviron == "" {
+		cfg.SpecEnviron = envOr("PET_SPEC_ENVIRON", "/proc/gvisor/spec_environ")
+	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
@@ -101,9 +105,34 @@ func (p *Pet) Tick(now time.Time) bool {
 		p.lives++
 		p.restoredAt = now
 		p.frozen += gap - p.cfg.TickInterval
+		// Env vars were restored along with our memory, so NODE_NAME still
+		// names the node we left. gVisor exposes the *new* pod spec's
+		// environment at /proc/gvisor/spec_environ; refresh from there.
+		if node := specEnvironValue(p.cfg.SpecEnviron, "NODE_NAME"); node != "" {
+			p.cfg.Node = node
+		}
 		return true
 	}
 	return false
+}
+
+// specEnvironValue reads KEY=VALUE pairs (NUL- or newline-separated, like
+// /proc/<pid>/environ) from path and returns the value for key, or "" if the
+// file is missing or the key is absent.
+func specEnvironValue(path, key string) string {
+	if path == "" {
+		return ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	for _, kv := range strings.FieldsFunc(string(b), func(r rune) bool { return r == 0 || r == '\n' }) {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == key {
+			return v
+		}
+	}
+	return ""
 }
 
 // Snapshot returns the current PetState.
@@ -189,7 +218,7 @@ func (p *Pet) runWithAddr(ctx context.Context, addr chan<- string) error {
 		case now := <-ticker.C:
 			if p.Tick(now) {
 				s := p.Snapshot(now)
-				log.Info("restored from snapshot: same memory, new life", "lives", s.Lives, "ticks", s.Ticks, "frozen", p.frozenTotal())
+				log.Info("restored from snapshot: same memory, new life", "lives", s.Lives, "ticks", s.Ticks, "node", s.Node, "frozen", p.frozenTotal())
 			}
 			if reporter != nil {
 				reporter.send(ctx, p.Snapshot(now))
