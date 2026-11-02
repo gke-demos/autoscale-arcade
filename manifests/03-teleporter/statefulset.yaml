@@ -59,11 +59,12 @@ spec:
           ports:
             - name: http
               containerPort: 8080
-          readinessProbe:
-            httpGet:
-              path: /healthz
-              port: http
-            periodSeconds: 2
+          # NOTE: Do NOT configure an httpGet readinessProbe here. gVisor
+          # whole-pod snapshot/restore preserves the sentry netstack bound to
+          # the origin Pod IP, so inbound kubelet probes to the replacement
+          # Pod's new IP time out after restore and hold Ready=False until
+          # PodMigrationJob hits RestoreTimeout. Outbound telemetry
+          # (pet -> arcade-server) continues uninterrupted across restores.
           resources:
             requests:
               cpu: 100m

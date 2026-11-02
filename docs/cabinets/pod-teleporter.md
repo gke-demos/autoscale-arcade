@@ -11,7 +11,7 @@
 | `PodMigration/arcade`, `PodSnapshotPolicy`, `PodSnapshotStorageConfig`, GCS bucket + IAM | `hack/cluster.sh` / `manifests/00-platform` | Snapshot storage and the eviction webhook config |
 | `ServiceAccount/pet` | `manifests/00-platform` | Pod KSA; the whole namespace has `storage.objectUser` on the bucket via a Workload Identity principalSet |
 | `Service/pet` (headless) | `manifests/03-teleporter` | Governing service for the StatefulSet |
-| `StatefulSet/pet` → pod `pet-0` | `manifests/03-teleporter` | 1 replica, `updateStrategy.type: OnDelete`, `runtimeClassName: gvisor`, label `pod-migration.gke.io/enabled: "true"`, `nodeSelector arcade.gke.io/pool: gvisor`, 100m / 256Mi, `arcade pet` |
+| `StatefulSet/pet` → pod `pet-0` | `manifests/03-teleporter` | 1 replica, `updateStrategy.type: OnDelete`, `runtimeClassName: gvisor`, label `pod-migration.gke.io/enabled: "true"`, `nodeSelector arcade.gke.io/pool: gvisor`, 100m / 256Mi, `arcade pet` (no `httpGet` readinessProbe — gVisor's restored netstack keeps the origin Pod IP, so inbound kubelet HTTP probes to the new Pod IP time out after restore and hold `Ready=False`) |
 
 Start state (`reset`): `pet-0` Running, no `kubernetes.io/hostname` pin in the template.
 
