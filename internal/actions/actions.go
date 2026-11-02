@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand"
 	"strings"
 	"time"
@@ -85,6 +86,7 @@ func (a *Actions) Do(ctx context.Context, name string, body json.RawMessage) err
 		Replicas  *int   `json:"replicas"`
 		Locked    *bool  `json:"locked"`
 		SpotRatio *int   `json:"spotRatio"`
+		Ratio     *int   `json:"ratio"`
 		Node      string `json:"node"`
 		Enabled   *bool  `json:"enabled"`
 		ToNode    string `json:"toNode"`
@@ -116,6 +118,9 @@ func (a *Actions) Do(ctx context.Context, name string, body json.RawMessage) err
 		}
 		return a.scale(ctx, ns(world.CabinetSpot), "checkout", r)
 	case "spot.ratio":
+		if p.SpotRatio == nil {
+			p.SpotRatio = p.Ratio
+		}
 		r, err := inRange("spotRatio", p.SpotRatio, 0, 100)
 		if err != nil {
 			return err
@@ -308,8 +313,75 @@ func annotationsPatch(ann map[string]string, key string, keep bool) map[string]a
 // ---- Spot On ----
 
 func (a *Actions) spotRatio(ctx context.Context, ratio int) error {
+	ns := world.Namespace(world.CabinetSpot)
 	patch := map[string]any{"spec": map[string]any{"capacityStrategy": map[string]any{"spotRatio": fmt.Sprintf("%d%%", ratio)}}}
-	return a.mergePatchDyn(ctx, world.GVRWorkloadClass, world.Namespace(world.CabinetSpot), "checkout", patch)
+	if err := a.mergePatchDyn(ctx, world.GVRWorkloadClass, ns, "checkout", patch); err != nil {
+		return err
+	}
+	if a.World.Memory.Stockout() {
+		return nil
+	}
+	if _, err := a.World.Clients.Dynamic.Resource(GVRCapacityQuota).Get(ctx, StockoutQuotaName, metav1.GetOptions{}); err == nil {
+		return nil
+	}
+	spotNode := map[string]bool{}
+	for _, n := range a.World.Nodes() {
+		if n.Labels[world.LabelSpot] == "true" || n.Labels[world.LabelProvisioning] == "spot" {
+			spotNode[n.Name] = true
+		}
+	}
+	var spotPods, odPods []*corev1.Pod
+	for _, p := range a.World.Pods() {
+		if p.Namespace != ns || p.DeletionTimestamp != nil || !world.PodActive(p) || world.WorkloadOf(p) != "checkout" {
+			continue
+		}
+		isSpot := false
+		if p.Spec.NodeName != "" {
+			isSpot = spotNode[p.Spec.NodeName]
+		} else {
+			isSpot = world.Placement(p) == "spot"
+		}
+		if isSpot {
+			spotPods = append(spotPods, p)
+		} else {
+			odPods = append(odPods, p)
+		}
+	}
+	total := len(spotPods) + len(odPods)
+	if total == 0 {
+		return nil
+	}
+	desiredSpot := int(math.Round(float64(total) * float64(ratio) / 100.0))
+	var toDelete []*corev1.Pod
+	if len(spotPods) > desiredSpot {
+		toDelete = spotPods[:len(spotPods)-desiredSpot]
+	} else if desiredOD := total - desiredSpot; len(odPods) > desiredOD {
+		toDelete = odPods[:len(odPods)-desiredOD]
+	}
+	if len(toDelete) == 0 {
+		return nil
+	}
+	// Let the workload-class webhook informer observe the updated spotRatio,
+	// then delete surplus pods with spacing so each replacement Pod sees the
+	// updated live pod counts during admission.
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(400 * time.Millisecond):
+	}
+	for i, p := range toDelete {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(150 * time.Millisecond):
+			}
+		}
+		if err := a.World.Clients.Kube.CoreV1().Pods(ns).Delete(ctx, p.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("delete checkout pod %s: %w", p.Name, err)
+		}
+	}
+	return nil
 }
 
 func (a *Actions) preempt(ctx context.Context, nodeName string) error {
