@@ -53,7 +53,18 @@ func (w *World) Snapshot() *WorldState {
 					return n.Pool
 				}
 			}
-			return ""
+			// MIG names truncate long NPAC pool names: match a unique pool prefix.
+			guess := guessPoolFromMIG(strings.TrimSuffix(mig, "-grp"), st.Cluster.Name)
+			match := ""
+			for _, n := range st.Nodes {
+				if strings.HasPrefix(n.Pool, guess) && n.Pool != match {
+					if match != "" {
+						return "" // ambiguous
+					}
+					match = n.Pool
+				}
+			}
+			return match
 		}
 		if a, err := ParseCAStatus(cm.Data["status"], st.Cluster.Name, poolOf); err == nil {
 			st.Cluster.Autoscaler = a
@@ -400,6 +411,9 @@ func cpuCores(s string) float64 {
 func (w *World) spotState(st *WorldState) SpotState {
 	ns := Namespace(CabinetSpot)
 	out := SpotState{Stockout: w.Memory.Stockout(), Action: "FallbackToOnDemand"}
+	if w.getDyn(GVRCapacityQuota, "", StockoutQuotaName) != nil {
+		out.Stockout = true // the lever's quota exists (survives server restarts)
+	}
 	if d := w.deployment(ns, "checkout"); d != nil && d.Spec.Replicas != nil {
 		out.Replicas = int(*d.Spec.Replicas)
 	}

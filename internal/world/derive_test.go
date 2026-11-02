@@ -105,7 +105,7 @@ func TestNodeFromK8s(t *testing.T) {
 func podWith(mut func(*corev1.Pod)) *corev1.Pod {
 	p := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout-abc-1", Namespace: "arcade-spot", UID: "u1",
-			Labels: map[string]string{"pod-template-hash": "abc"},
+			Labels:          map[string]string{"pod-template-hash": "abc"},
 			OwnerReferences: []metav1.OwnerReference{{Kind: "ReplicaSet", Name: "checkout-abc"}}},
 		Spec: corev1.PodSpec{NodeName: "n1", Containers: []corev1.Container{{Name: "app", Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceCPU: q("250m")}}}}},
 		Status: corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{

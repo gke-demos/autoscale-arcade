@@ -163,9 +163,9 @@ func WorkloadOf(p *corev1.Pod) string {
 
 // PodContext is the extra information PodFromK8s needs beyond the pod itself.
 type PodContext struct {
-	NodeSpot    *bool  // nil when the node is unknown / pod unscheduled
-	MigrationJob string // PMJ name targeting or restoring this pod
-	MigrationPhase string
+	NodeSpot                *bool  // nil when the node is unknown / pod unscheduled
+	MigrationJob            string // PMJ name targeting or restoring this pod
+	MigrationPhase          string
 	PendingReasonFromEvents string // e.g. TriggeredScaleUp
 }
 

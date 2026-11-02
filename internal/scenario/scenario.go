@@ -36,11 +36,11 @@ type Scenario struct {
 
 // Step is one scripted step.
 type Step struct {
-	Caption   string         `json:"caption,omitempty"`
-	Wait      Duration       `json:"wait,omitempty"`
-	Action    *Action        `json:"action,omitempty"`
-	WaitFor   *WaitFor       `json:"waitFor,omitempty"`
-	OnTimeout string         `json:"onTimeout,omitempty"` // "continue" | "" (fail)
+	Caption   string   `json:"caption,omitempty"`
+	Wait      Duration `json:"wait,omitempty"`
+	Action    *Action  `json:"action,omitempty"`
+	WaitFor   *WaitFor `json:"waitFor,omitempty"`
+	OnTimeout string   `json:"onTimeout,omitempty"` // "continue" | "" (fail)
 }
 
 // Action is `{name: climber.scale, replicas: 24}`: name plus inline body
@@ -131,10 +131,10 @@ type Runner struct {
 	dir string
 	env Env
 
-	mu      sync.Mutex
-	cancel  context.CancelFunc
-	done    chan struct{}
-	state   world.ScenarioState
+	mu     sync.Mutex
+	cancel context.CancelFunc
+	done   chan struct{}
+	state  world.ScenarioState
 }
 
 // NewRunner creates a runner for the YAML files in dir.

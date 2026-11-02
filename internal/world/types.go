@@ -275,10 +275,10 @@ type BurstState struct {
 }
 
 type AbsorberState struct {
-	Preset             string        `json:"preset"`
-	Buffers            []BufferState `json:"buffers"`
-	Burst              BurstState    `json:"burst"`
-	HeadroomCostPerHour float64      `json:"headroomCostPerHour"`
+	Preset              string        `json:"preset"`
+	Buffers             []BufferState `json:"buffers"`
+	Burst               BurstState    `json:"burst"`
+	HeadroomCostPerHour float64       `json:"headroomCostPerHour"`
 }
 
 // --- Lights Out ---

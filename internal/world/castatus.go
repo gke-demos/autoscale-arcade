@@ -11,11 +11,11 @@ import (
 // (cluster-autoscaler/clusterstate/api/types.go) as published in
 // kube-system/cluster-autoscaler-status data.status.
 type caStatus struct {
-	Time             string          `json:"time"`
-	AutoscalerStatus string          `json:"autoscalerStatus"`
-	Message          string          `json:"message"`
-	ClusterWide      caClusterWide   `json:"clusterWide"`
-	NodeGroups       []caNodeGroup   `json:"nodeGroups"`
+	Time             string        `json:"time"`
+	AutoscalerStatus string        `json:"autoscalerStatus"`
+	Message          string        `json:"message"`
+	ClusterWide      caClusterWide `json:"clusterWide"`
+	NodeGroups       []caNodeGroup `json:"nodeGroups"`
 }
 
 type caClusterWide struct {
@@ -40,7 +40,7 @@ type caNodeCounts struct {
 		NotStarted   int `json:"notStarted"`
 		BeingDeleted int `json:"beingDeleted"`
 		Unready      struct {
-			Total          int `json:"total"`
+			Total           int `json:"total"`
 			ResourceUnready int `json:"resourceUnready"`
 		} `json:"unready"`
 	} `json:"registered"`
@@ -140,7 +140,23 @@ func guessPoolFromMIG(mig, cluster string) string {
 	if i := strings.LastIndex(s, "-"); i > 0 && len(s)-i-1 == 8 {
 		s = s[:i]
 	}
-	return s
+	return strings.TrimSuffix(s, "-")
+}
+
+// familyFromPool guesses machine family and spot-ness from an auto-created
+// pool name such as nap-n4d-standard-2-spot-1q5307s5 (used only for
+// placeholder nodes of pools that have no registered node yet).
+func familyFromPool(pool string) (family string, spot bool) {
+	parts := strings.Split(pool, "-")
+	for i, p := range parts {
+		if p == "nap" && i+1 < len(parts) {
+			family = parts[i+1]
+		}
+		if p == "spot" {
+			spot = true
+		}
+	}
+	return family, spot
 }
 
 // parseCATime accepts the CA's "2006-01-02 15:04:05.999999999 -0700 MST" format
@@ -178,6 +194,9 @@ func PlaceholderNodes(a Autoscaler, nodes []Node) []Node {
 				family, machine, spot, cc = n.MachineFamily, n.MachineType, n.Spot, n.ComputeClass
 				break
 			}
+		}
+		if family == "" {
+			family, spot = familyFromPool(g.Pool)
 		}
 		for i := 1; i <= missing; i++ {
 			out = append(out, Node{

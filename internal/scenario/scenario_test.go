@@ -17,8 +17,8 @@ func sampleState() *world.WorldState {
 		Ts: "2026-11-02T12:00:00Z",
 		Cabinets: world.Cabinets{
 			Teleporter: world.TeleporterState{
-				Pet:  world.PetRef{Pod: "pet-0", Node: "gke-gvisor-1", Connected: true},
-				Jobs: []world.MigrationJob{{Name: "pmj-1", Phase: "Succeeded"}},
+				Pet:           world.PetRef{Pod: "pet-0", Node: "gke-gvisor-1", Connected: true},
+				Jobs:          []world.MigrationJob{{Name: "pmj-1", Phase: "Succeeded"}},
 				LastMigration: &world.LastMigration{From: "a", To: "b", DowntimeMs: 6900, Restored: "inferred"},
 			},
 			Lights: world.LightsState{QueueDepth: 3, HPA: world.HPAState{ScaledToZero: true, Current: 0}},
@@ -174,7 +174,12 @@ steps:
 			}
 			return nil
 		},
-		Reset:   func(ctx context.Context, cab string) error { mu.Lock(); resets = append(resets, cab); mu.Unlock(); return nil },
+		Reset: func(ctx context.Context, cab string) error {
+			mu.Lock()
+			resets = append(resets, cab)
+			mu.Unlock()
+			return nil
+		},
 		OnState: func(s world.ScenarioState) { mu.Lock(); states = append(states, s); mu.Unlock() },
 	}
 	r := NewRunner(dir, env)

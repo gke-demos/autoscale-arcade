@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -32,12 +32,17 @@ var (
 	GVRWorkloadClassGuardrail = schema.GroupVersionResource{Group: "workloads.gke.io", Version: "v1", Resource: "workloadclassguardrails"}
 	GVRPodMigrationJob        = schema.GroupVersionResource{Group: "podmigration.gke.io", Version: "v1alpha1", Resource: "podmigrationjobs"}
 	GVRPodSnapshot            = schema.GroupVersionResource{Group: "podsnapshot.gke.io", Version: "v1", Resource: "podsnapshots"}
+	GVRCapacityQuota          = schema.GroupVersionResource{Group: "autoscaling.x-k8s.io", Version: "v1beta1", Resource: "capacityquotas"}
 )
+
+// StockoutQuotaName is the cluster-scoped CapacityQuota the Spot On stockout
+// lever creates (docs/cabinets/spot-on.md). Its existence = lever engaged.
+const StockoutQuotaName = "arcade-spot-stockout"
 
 var crdGVRs = []schema.GroupVersionResource{
 	GVRComputeClass, GVRCapacityBuffer, GVRAutoscalingMetric, GVRVPA,
 	GVRWorkloadClass, GVRSpotPlacementPolicy, GVRWorkloadClassGuardrail,
-	GVRPodMigrationJob, GVRPodSnapshot,
+	GVRPodMigrationJob, GVRPodSnapshot, GVRCapacityQuota,
 }
 
 // Config configures a World.

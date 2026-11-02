@@ -93,7 +93,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		c.send <- b
 	}
 	if pet, connected := s.world.Memory.Pet(); connected && pet != nil {
-		b, _ := json.Marshal(map[string]any{"type": "pet", "pet": pet})
+		b, _ := json.Marshal(map[string]any{"type": "pet", "pet": s.petView(*pet)})
 		c.send <- b
 	}
 	s.hub.mu.Lock()

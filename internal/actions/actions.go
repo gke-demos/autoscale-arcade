@@ -78,17 +78,17 @@ func (a *Actions) Do(ctx context.Context, name string, body json.RawMessage) err
 		body = json.RawMessage("{}")
 	}
 	var p struct {
-		Replicas  *int    `json:"replicas"`
-		Locked    *bool   `json:"locked"`
-		SpotRatio *int    `json:"spotRatio"`
-		Node      string  `json:"node"`
-		Enabled   *bool   `json:"enabled"`
-		ToNode    string  `json:"toNode"`
-		Preset    string  `json:"preset"`
-		Delta     *int    `json:"delta"`
-		Count     *int    `json:"count"`
-		Cabinet   string  `json:"cabinet"`
-		Name      string  `json:"name"`
+		Replicas  *int   `json:"replicas"`
+		Locked    *bool  `json:"locked"`
+		SpotRatio *int   `json:"spotRatio"`
+		Node      string `json:"node"`
+		Enabled   *bool  `json:"enabled"`
+		ToNode    string `json:"toNode"`
+		Preset    string `json:"preset"`
+		Delta     *int   `json:"delta"`
+		Count     *int   `json:"count"`
+		Cabinet   string `json:"cabinet"`
+		Name      string `json:"name"`
 	}
 	if err := json.Unmarshal(body, &p); err != nil {
 		return fmt.Errorf("bad body: %w", err)
@@ -203,10 +203,16 @@ func (a *Actions) mergePatchDyn(ctx context.Context, g schema.GroupVersionResour
 
 // ---- Capacity Climber ----
 
-const annLockedPriority = "arcade.gke.io/locked-priority"
+const (
+	annLockedPriority = "arcade.gke.io/locked-priority"
+	// LockedReservationName is the (deliberately non-existent) reservation
+	// rung #1 is pinned to while locked.
+	LockedReservationName = "arcade-locked"
+)
 
 // climberLock makes rung #1 unobtainable by pointing it at a reservation that
-// does not exist with affinity AnyThenFail; unlock restores the saved rule.
+// does not exist (affinity Specific, name arcade-locked); unlock restores the
+// saved rule from the arcade.gke.io/locked-priority annotation.
 func (a *Actions) climberLock(ctx context.Context, locked bool) error {
 	cc := a.World.Clients.Dynamic.Resource(world.GVRComputeClass)
 	obj, err := cc.Get(ctx, "arcade-climber", metav1.GetOptions{})
@@ -235,7 +241,9 @@ func (a *Actions) climberLock(ctx context.Context, locked bool) error {
 			}
 			lockedRule[k] = v
 		}
-		lockedRule["reservations"] = map[string]any{"affinity": "AnyThenFail"}
+		// A specific reservation that does not exist makes the rung
+		// unobtainable: GKE skips it and pods land on rung #2.
+		lockedRule["reservations"] = map[string]any{"affinity": "Specific", "specific": []any{map[string]any{"name": LockedReservationName}}}
 		prios[0] = lockedRule
 	} else {
 		if s := ann[annLockedPriority]; s != "" {
@@ -321,44 +329,40 @@ func parseProviderID(id string) (project, zone, instance string, err error) {
 	return parts[0], parts[1], parts[2], nil
 }
 
-const annStockoutPriorities = "arcade.gke.io/stockout-priorities"
+// GVRCapacityQuota / StockoutQuotaName identify the stockout lever's object
+// (docs/cabinets/spot-on.md); the world package also watches it so the
+// SpotState.stockout flag reflects the cluster, not just server memory.
+var GVRCapacityQuota = world.GVRCapacityQuota
 
-// DefaultStockout is the default lever: remove the Spot rules from
-// ComputeClass/arcade-spot (so NPAC can only create on-demand capacity), then
-// cordon + drain the class's Spot nodes so checkout pods fall back. Disabling
-// restores the saved rules and uncordons.
+const StockoutQuotaName = world.StockoutQuotaName
+
+// DefaultStockout is the lever chosen by the platform owner: a cluster-scoped
+// CapacityQuota selecting compute-class=arcade-spot + gke-spot=true with
+// limits.resources.nodes "0" (CA then skips every Spot rung and NPAC creates
+// on-demand capacity), plus cordon + evict of the class's existing Spot nodes
+// so the checkout pods fall back. Disengage = delete the quota + uncordon;
+// active migration / Active reversion move the pods back to Spot.
 func DefaultStockout(ctx context.Context, a *Actions, enabled bool) error {
-	cc := a.World.Clients.Dynamic.Resource(world.GVRComputeClass)
-	obj, err := cc.Get(ctx, "arcade-spot", metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("get ComputeClass/arcade-spot: %w", err)
-	}
-	prios, _, _ := unstructured.NestedSlice(obj.Object, "spec", "priorities")
-	ann := obj.GetAnnotations()
+	quotas := a.World.Clients.Dynamic.Resource(GVRCapacityQuota)
 	if enabled {
-		if ann[annStockoutPriorities] == "" {
-			saved, _ := json.Marshal(prios)
-			var kept []any
-			for _, p := range prios {
-				m, _ := p.(map[string]any)
-				if spot, _ := m["spot"].(bool); spot {
-					continue
-				}
-				kept = append(kept, p)
-			}
-			if len(kept) == 0 {
-				return errors.New("ComputeClass/arcade-spot has no on-demand rule to fall back to")
-			}
-			patch := map[string]any{
-				"metadata": map[string]any{"annotations": map[string]any{annStockoutPriorities: string(saved)}},
-				"spec":     map[string]any{"priorities": kept},
-			}
-			b, _ := json.Marshal(patch)
-			if _, err := cc.Patch(ctx, "arcade-spot", types.MergePatchType, b, metav1.PatchOptions{FieldManager: "arcade"}); err != nil {
-				return fmt.Errorf("patch ComputeClass/arcade-spot: %w", err)
-			}
+		q := &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": GVRCapacityQuota.GroupVersion().String(),
+			"kind":       "CapacityQuota",
+			"metadata": map[string]any{
+				"name":   StockoutQuotaName,
+				"labels": map[string]any{world.LabelPartOf: world.PartOfValue, world.LabelCabinet: world.CabinetSpot},
+			},
+			"spec": map[string]any{
+				"selector": map[string]any{"matchLabels": map[string]any{
+					world.LabelComputeClass: "arcade-spot",
+					world.LabelSpot:         "true",
+				}},
+				"limits": map[string]any{"resources": map[string]any{"nodes": "0"}},
+			},
+		}}
+		if _, err := quotas.Create(ctx, q, metav1.CreateOptions{FieldManager: "arcade"}); err != nil && !apierrors.IsAlreadyExists(err) {
+			return fmt.Errorf("create CapacityQuota/%s: %w", StockoutQuotaName, err)
 		}
-		// Cordon + drain the class's Spot nodes.
 		for _, n := range a.World.Nodes() {
 			if n.Labels[world.LabelComputeClass] != "arcade-spot" || n.Labels[world.LabelSpot] != "true" {
 				continue
@@ -372,19 +376,8 @@ func DefaultStockout(ctx context.Context, a *Actions, enabled bool) error {
 		}
 		return nil
 	}
-	if s := ann[annStockoutPriorities]; s != "" {
-		var orig []any
-		if err := json.Unmarshal([]byte(s), &orig); err != nil {
-			return fmt.Errorf("saved priorities: %w", err)
-		}
-		patch := map[string]any{
-			"metadata": map[string]any{"annotations": map[string]any{annStockoutPriorities: nil}},
-			"spec":     map[string]any{"priorities": orig},
-		}
-		b, _ := json.Marshal(patch)
-		if _, err := cc.Patch(ctx, "arcade-spot", types.MergePatchType, b, metav1.PatchOptions{FieldManager: "arcade"}); err != nil {
-			return fmt.Errorf("restore ComputeClass/arcade-spot: %w", err)
-		}
+	if err := quotas.Delete(ctx, StockoutQuotaName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("delete CapacityQuota/%s: %w", StockoutQuotaName, err)
 	}
 	for _, n := range a.World.Nodes() {
 		if n.Labels[world.LabelComputeClass] == "arcade-spot" && n.Spec.Unschedulable {
@@ -572,7 +565,7 @@ func (a *Actions) Reset(ctx context.Context, cabinet string) error {
 		case world.CabinetClimber:
 			err = errors.Join(a.scale(ctx, world.Namespace(id), "climber", 0), a.climberLock(ctx, false))
 		case world.CabinetSpot:
-			if a.World.Memory.Stockout() && a.Stockout != nil {
+			if a.Stockout != nil { // idempotent: deletes the quota if present, uncordons
 				err = a.Stockout(ctx, a, false)
 				a.World.Memory.SetStockout(false)
 			}

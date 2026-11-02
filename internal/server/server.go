@@ -42,18 +42,18 @@ type Config struct {
 
 // Server holds the wired components.
 type Server struct {
-	cfg      Config
-	log      *slog.Logger
-	world    *world.World
-	actions  *actions.Actions
-	runner   *scenario.Runner
-	hub      *Hub
-	limiter  *clientLimiter
-	leaders  *Leaderboard
-	started  time.Time
+	cfg     Config
+	log     *slog.Logger
+	world   *world.World
+	actions *actions.Actions
+	runner  *scenario.Runner
+	hub     *Hub
+	limiter *clientLimiter
+	leaders *Leaderboard
+	started time.Time
 
-	mu       sync.RWMutex
-	latest   *world.WorldState
+	mu     sync.RWMutex
+	latest *world.WorldState
 }
 
 // Run wires everything and serves until ctx is done.
@@ -107,20 +107,23 @@ func New(cfg Config, w *world.World, log *slog.Logger) *Server {
 	})
 	s.actions.Scenario = s.runner
 	s.leaders = NewLeaderboard(w.Clients, log)
-	w.Memory.OnPet(func(p world.PetState) {
-		// The pet's NODE_NAME env is restored with its memory and is stale
-		// after a live migration: trust the informer instead.
-		if st := s.State(); st != nil {
-			if pet := st.Cabinets.Teleporter.Pet; pet.Pod != "" {
-				p.Pod = pet.Pod
-				if pet.Node != "" {
-					p.Node = pet.Node
-				}
+	w.Memory.OnPet(func(p world.PetState) { s.hub.BroadcastPet(s.petView(p)) })
+	return s
+}
+
+// petView overrides pod/node in pet telemetry from the pet-0 informer: the
+// pet's NODE_NAME env is restored with its memory and is stale after a live
+// migration.
+func (s *Server) petView(p world.PetState) world.PetState {
+	if st := s.State(); st != nil {
+		if pet := st.Cabinets.Teleporter.Pet; pet.Pod != "" {
+			p.Pod = pet.Pod
+			if pet.Node != "" {
+				p.Node = pet.Node
 			}
 		}
-		s.hub.BroadcastPet(p)
-	})
-	return s
+	}
+	return p
 }
 
 // State returns the latest snapshot (computing one if none yet).
@@ -353,6 +356,10 @@ func (s *Server) handlePetPost(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePetGet(w http.ResponseWriter, r *http.Request) {
 	p, connected := s.world.Memory.Pet()
+	if p != nil {
+		v := s.petView(*p)
+		p = &v
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"connected": connected, "pet": p})
 }
 
