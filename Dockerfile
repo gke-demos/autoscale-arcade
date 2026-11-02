@@ -36,7 +36,10 @@ WORKDIR /src
 COPY go.mod go.sum* ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
-RUN mkdir -p scenarios
+# Files copied from the build context keep the host's modes (often 0640 under
+# umask 027); the runtime image is nonroot (65532), so make the scenario files
+# world-readable before they are copied into the final stage.
+RUN mkdir -p scenarios && chmod -R a+rX scenarios
 # The server embeds internal/server/dist (see internal/server/ui.go); replace
 # the placeholder with the real UI build.
 COPY --from=web /src/web/dist/ ./internal/server/dist/
