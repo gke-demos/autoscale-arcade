@@ -189,9 +189,12 @@ function Controls({ world }: CabinetProps) {
   }, [t.lastMigration, setPrompt]);
 
   const everMigrated = useRef(false);
-  if (t.lastMigration && (t.lastMigration.restored === 'verified' || t.lastMigration.restored === 'inferred')) {
+  if (t.jobs.length === 0 && (pet?.lives ?? 0) === 0) {
+    everMigrated.current = false;
+  } else if (t.lastMigration && (t.lastMigration.restored === 'verified' || t.lastMigration.restored === 'inferred')) {
     everMigrated.current = true;
   }
+  const hearts = pet ? Math.max(1, pet.lives + 1) : 0;
 
   return (
     <>
@@ -209,13 +212,13 @@ function Controls({ world }: CabinetProps) {
           {
             label: 'Drag & drop pet-0 onto another ⬡ gVisor node',
             detail: 'Or press Random teleport to trigger a GKE Pod Snapshot to GCS.',
-            done: migrating || everMigrated.current || (pet?.lives ?? 1) > 1,
+            done: migrating || everMigrated.current || (pet?.lives ?? 0) > 0,
             active: !migrating && !everMigrated.current && (pet?.ticks ?? 0) >= 20,
           },
           {
             label: 'Verify memory survived on the new node',
             detail: 'pet-0 resumes from its exact tick count and gains a ♥ life!',
-            done: everMigrated.current || (pet?.lives ?? 1) > 1,
+            done: everMigrated.current || (pet?.lives ?? 0) > 0,
             active: migrating,
           },
         ]}
@@ -225,7 +228,7 @@ function Controls({ world }: CabinetProps) {
         <div className="flex flex-wrap gap-2">
           <Stat label="ticks" value={<span className={migrating || !live ? 'text-[#fbbc04]' : 'text-[#81c995]'}>{pet ? pet.ticks.toLocaleString() : '—'}</span>} sub={live ? '10/s live' : 'no telemetry'} />
           <Stat label="score" value={pet?.score.toLocaleString() ?? '—'} />
-          <Stat label="lives" value={pet ? '♥'.repeat(Math.min(pet.lives, 8)) + (pet.lives > 8 ? `+${pet.lives - 8}` : '') : '—'} tone="text-[#ea4335]" sub="migrations survived" />
+          <Stat label="lives" value={pet ? '♥'.repeat(Math.min(hearts, 8)) + (hearts > 8 ? `+${hearts - 8}` : '') : '—'} tone="text-[#ea4335]" sub={pet ? `${pet.lives} migration${pet.lives === 1 ? '' : 's'} survived` : 'migrations survived'} />
           <Stat label="uptime" value={pet ? stopwatch(pet.uptimeSec * 1000).slice(0, 5) : '—'} sub={pet ? `since ${ago(pet.bornAt, now)} ago` : undefined} />
         </div>
         <PetBall />
@@ -239,9 +242,14 @@ function Controls({ world }: CabinetProps) {
         <div className="rounded-xl border border-[#fbbc04]/40 bg-[#fbbc04]/10 p-3 text-[0.85rem] text-[#fde293]">
           <b>Drag the glowing yellow pet cube</b> onto another ⬡ gVisor node slab. The server pins the StatefulSet to that node and evicts <code>pet-0</code>; the pod-migration webhook checkpoints RAM to GCS and restores it on the target node.
         </div>
-        <ActionButton action="teleporter.random" accent={ACCENT} disabled={migrating || t.gvisorNodes.length < 2} label="Random teleport">
-          🎲 Random teleport
-        </ActionButton>
+        <div className="grid grid-cols-2 gap-2">
+          <ActionButton action="teleporter.random" accent={ACCENT} disabled={migrating || t.gvisorNodes.length < 2} label="Random teleport">
+            🎲 Random teleport
+          </ActionButton>
+          <ActionButton action="reset" body={{ cabinet: 'teleporter' }} disabled={migrating} label="Reset teleporter">
+            ↺ Play again
+          </ActionButton>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Stopwatch2 job={job} migrating={migrating} frozenMs={frozenMs} pet={pet} />
           {t.lastMigration && (

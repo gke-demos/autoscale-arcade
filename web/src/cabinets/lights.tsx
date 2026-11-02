@@ -128,6 +128,10 @@ function Controls({ world }: CabinetProps) {
 
   const everQueued = useRef(false);
   const everWoke = useRef(false);
+  if (l.queueDepth === 0 && l.processed === 0 && l.hpa.scaledToZero) {
+    everQueued.current = false;
+    everWoke.current = false;
+  }
   if (l.queueDepth > 0 || l.processed > 0) everQueued.current = true;
   if (!l.hpa.scaledToZero || l.hpa.current > 0 || lit > 0) everWoke.current = true;
 

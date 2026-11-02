@@ -640,6 +640,29 @@ func (a *Actions) unpinPet(ctx context.Context) error {
 	return nil
 }
 
+// resetTeleporter unpins StatefulSet/pet, deletes prior PodMigrationJobs and
+// PodSnapshots in arcade-teleporter, and restarts pet-0 so the player gets a
+// clean slate ("Play Again").
+func (a *Actions) resetTeleporter(ctx context.Context) error {
+	ns := world.Namespace(world.CabinetTeleporter)
+	err := a.unpinPet(ctx)
+	if a.World.Clients.Dynamic != nil {
+		_ = a.World.Clients.Dynamic.Resource(world.GVRPodMigrationJob).Namespace(ns).DeleteCollection(ctx, metav1.DeleteOptions{}, metav1.ListOptions{})
+		_ = a.World.Clients.Dynamic.Resource(world.GVRPodSnapshot).Namespace(ns).DeleteCollection(ctx, metav1.DeleteOptions{}, metav1.ListOptions{})
+		for _, j := range a.World.MigrationJobs() {
+			_ = a.World.Clients.Dynamic.Resource(world.GVRPodMigrationJob).Namespace(ns).Delete(ctx, j.Name, metav1.DeleteOptions{})
+		}
+	}
+	if a.World.Clients.Kube != nil {
+		zero := int64(0)
+		if delErr := a.World.Clients.Kube.CoreV1().Pods(ns).Delete(ctx, "pet-0", metav1.DeleteOptions{GracePeriodSeconds: &zero}); delErr != nil && !apierrors.IsNotFound(delErr) {
+			err = errors.Join(err, fmt.Errorf("delete pet-0: %w", delErr))
+		}
+	}
+	a.World.Memory.ResetPet()
+	return err
+}
+
 // ---- Shock Absorber ----
 
 var presets = map[string][2]int{"none": {0, 0}, "active4": {4, 0}, "active8": {8, 0}, "standby8": {0, 8}}
@@ -722,7 +745,7 @@ func (a *Actions) Reset(ctx context.Context, cabinet string) error {
 			}
 			err = errors.Join(err, a.scale(ctx, world.Namespace(id), "checkout", 10), a.spotRatio(ctx, 80))
 		case world.CabinetTeleporter:
-			err = a.unpinPet(ctx)
+			err = a.resetTeleporter(ctx)
 		case world.CabinetAbsorber:
 			a.World.Memory.SetBurstStarted(time.Time{})
 			err = errors.Join(a.absorberPreset(ctx, "none"), a.scale(ctx, world.Namespace(id), "burst-worker", 0))

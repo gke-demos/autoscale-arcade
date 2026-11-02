@@ -102,18 +102,21 @@ func New(cfg Config) *Pet {
 func (p *Pet) Tick(now time.Time) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	gap := now.Sub(p.lastTick)
+	// Strip monotonic clock readings (.Round(0)) so wall-clock jumps across a
+	// gVisor checkpoint/restore are measured even when CLOCK_MONOTONIC resumes
+	// from its checkpointed value.
+	gap := now.Round(0).Sub(p.lastTick.Round(0))
+	if gap <= 0 {
+		gap = now.Sub(p.lastTick)
+	}
 	p.lastTick = now
 	p.sim.Step(p.cfg.TickInterval)
 	if gap > p.cfg.GapThreshold {
 		p.lives++
 		p.restoredAt = now
 		p.frozen += gap - p.cfg.TickInterval
-		// Env vars were restored along with our memory, so NODE_NAME still
-		// names the node we left. gVisor exposes the *new* pod spec's
-		// environment at /proc/gvisor/spec_environ; refresh from there.
-		if node := specEnvironValue(p.cfg.SpecEnviron, "NODE_NAME"); node != "" {
-			p.cfg.Node = node
+		if newNode := specEnvironValue(p.cfg.SpecEnviron, "NODE_NAME"); newNode != "" {
+			p.cfg.Node = newNode
 		}
 		return true
 	}
@@ -236,7 +239,7 @@ func (p *Pet) runWithAddr(ctx context.Context, addr chan<- string) error {
 				s := p.Snapshot(now)
 				log.Info("restored from snapshot: same memory, new life", "lives", s.Lives, "ticks", s.Ticks, "node", s.Node, "frozen", p.frozenTotal())
 				if reporter != nil {
-					reporter.client.CloseIdleConnections()
+					reporter.resetClient()
 				}
 				// Re-bind the HTTP listener after a gVisor restore so the new
 				// sandbox's netstack accepts probes on the restored pod IP.
@@ -264,37 +267,74 @@ func (p *Pet) frozenTotal() time.Duration {
 }
 
 // reporter POSTs PetState to the arcade server. Sends are fire-and-forget and
-// coalesced: if a request is still in flight the tick is skipped, so a slow
-// server can never stall the simulation.
+// coalesced: if a request is still in flight the tick is skipped, unless the
+// in-flight request has been stuck for >800ms wall-clock (e.g. across a gVisor
+// checkpoint/restore), in which case a fresh HTTP transport is created.
 type reporter struct {
-	url      string
-	token    string
-	client   *http.Client
-	log      *slog.Logger
-	inflight chan struct{}
-	lastErr  time.Time
-	errs     int
+	url           string
+	token         string
+	log           *slog.Logger
+	mu            sync.Mutex
+	client        *http.Client
+	inflight      bool
+	inflightSince time.Time
+	gen           uint64
+	lastErr       time.Time
+	errs          int
+}
+
+func newHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout:   1500 * time.Millisecond,
+		Transport: &http.Transport{DisableKeepAlives: true},
+	}
 }
 
 func newReporter(url, token string, log *slog.Logger) *reporter {
 	return &reporter{
-		url:      url,
-		token:    token,
-		client:   &http.Client{Timeout: 2 * time.Second},
-		log:      log,
-		inflight: make(chan struct{}, 1),
+		url:    url,
+		token:  token,
+		client: newHTTPClient(),
+		log:    log,
 	}
 }
 
+func (r *reporter) resetClient() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.client.CloseIdleConnections()
+	r.client = newHTTPClient()
+	r.inflight = false
+	r.gen++
+}
+
 func (r *reporter) send(ctx context.Context, s State) {
-	select {
-	case r.inflight <- struct{}{}:
-	default:
-		return // previous report still in flight
+	now := time.Now()
+	r.mu.Lock()
+	if r.inflight {
+		if now.Round(0).Sub(r.inflightSince.Round(0)) < 800*time.Millisecond {
+			r.mu.Unlock()
+			return
+		}
+		// Previous request wedged across checkpoint/restore: swap client.
+		r.client = newHTTPClient()
+		r.gen++
 	}
+	r.inflight = true
+	r.inflightSince = now
+	client := r.client
+	myGen := r.gen
+	r.mu.Unlock()
+
 	body, _ := json.Marshal(s)
 	go func() {
-		defer func() { <-r.inflight }()
+		defer func() {
+			r.mu.Lock()
+			if r.gen == myGen {
+				r.inflight = false
+			}
+			r.mu.Unlock()
+		}()
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.url, bytes.NewReader(body))
 		if err != nil {
 			return
@@ -303,22 +343,30 @@ func (r *reporter) send(ctx context.Context, s State) {
 		if r.token != "" {
 			req.Header.Set("Authorization", "Bearer "+r.token)
 		}
-		resp, err := r.client.Do(req)
+		resp, err := client.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode < 300 {
+				r.mu.Lock()
 				if r.errs > 0 {
 					r.log.Info("pet report recovered", "after", r.errs)
 					r.errs = 0
 				}
+				r.mu.Unlock()
 				return
 			}
 			err = fmt.Errorf("status %s", resp.Status)
 		}
+		r.mu.Lock()
 		r.errs++
-		if time.Since(r.lastErr) > 10*time.Second {
+		errs := r.errs
+		shouldLog := time.Since(r.lastErr) > 10*time.Second
+		if shouldLog {
 			r.lastErr = time.Now()
-			r.log.Warn("pet report failed", "err", err, "failures", r.errs)
+		}
+		r.mu.Unlock()
+		if shouldLog {
+			r.log.Warn("pet report failed", "err", err, "failures", errs)
 		}
 	}()
 }

@@ -183,3 +183,12 @@ func (m *Memory) Pet() (p *PetState, connected bool) {
 	cp := *m.pet
 	return &cp, time.Since(m.petSeen) < PetTimeout
 }
+
+// ResetPet clears cached pet telemetry (used when resetting the Teleporter cabinet).
+func (m *Memory) ResetPet() {
+	m.mu.Lock()
+	m.pet = nil
+	m.petSeen = time.Time{}
+	m.mu.Unlock()
+	m.changed()
+}

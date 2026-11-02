@@ -142,7 +142,10 @@ rules:
     verbs: [delete]
   - apiGroups: [podmigration.gke.io]
     resources: [podmigrationjobs]
-    verbs: [delete]
+    verbs: [delete, deletecollection]
+  - apiGroups: [podsnapshot.gke.io]
+    resources: [podsnapshots]
+    verbs: [delete, deletecollection]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

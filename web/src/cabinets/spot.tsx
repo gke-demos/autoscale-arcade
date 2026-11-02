@@ -84,6 +84,11 @@ function Controls({ world }: CabinetProps) {
   const everDialed = useRef(false);
   const everChaos = useRef(false);
   const everReverted = useRef(false);
+  if (s.replicas === 0 && !s.stockout) {
+    everDialed.current = false;
+    everChaos.current = false;
+    everReverted.current = false;
+  }
   if (s.spotRatio >= 50 && s.counts.spot > 0) everDialed.current = true;
   if (s.stockout || s.inFallback || s.counts.fallback > 0) everChaos.current = true;
   if (everChaos.current && !s.stockout && s.counts.fallback === 0 && s.counts.spot > 0) everReverted.current = true;

@@ -165,6 +165,11 @@ function Controls({ world }: CabinetProps) {
   const everScaled = useRef(false);
   const everLocked = useRef(false);
   const everMigratedBack = useRef(false);
+  if (c.desired === 0 && c.replicas === 0 && !locked) {
+    everScaled.current = false;
+    everLocked.current = false;
+    everMigratedBack.current = false;
+  }
   if (c.ready >= 6) everScaled.current = true;
   if (locked || fallbackPods > 0) everLocked.current = true;
   if (everLocked.current && !locked && rung1Pods > 0) everMigratedBack.current = true;
