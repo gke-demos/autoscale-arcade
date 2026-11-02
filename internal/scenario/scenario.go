@@ -371,14 +371,29 @@ func (r *Runner) runSteps(ctx context.Context, s *Scenario, attract bool) error 
 		caption := r.caption(step.Caption, s.Cabinet)
 		r.publish(func(st *world.ScenarioState) { st.Step = i + 1; st.Caption = caption; st.Error = "" })
 		r.env.Log.Info("scenario step", "scenario", s.Name, "step", i+1, "caption", caption)
+		prevJob := ""
 		if step.Action != nil {
+			if strings.HasPrefix(step.Action.Name, "teleporter.") {
+				if v, ok := Lookup(toMap(r.env.State()), "cabinets.teleporter.jobs[0].name"); ok {
+					prevJob, _ = v.(string)
+				}
+			}
 			body, _ := json.Marshal(step.Action.Body)
 			if err := r.env.Act(ctx, step.Action.Name, body); err != nil {
 				return fmt.Errorf("step %d (%s): %w", i+1, step.Action.Name, err)
 			}
+			if step.WaitFor != nil {
+				// Let the server's 250ms coalesced snapshot loop publish the
+				// post-action WorldState before polling waitFor.
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(300 * time.Millisecond):
+				}
+			}
 		}
 		if step.WaitFor != nil {
-			if err := r.waitFor(ctx, step.WaitFor, s.Cabinet); err != nil {
+			if err := r.waitFor(ctx, step.WaitFor, s.Cabinet, prevJob); err != nil {
 				if step.OnTimeout == "continue" && errors.Is(err, errTimeout) {
 					r.env.Log.Warn("waitFor timed out; continuing", "scenario", s.Name, "step", i+1, "path", step.WaitFor.Path)
 				} else {
@@ -399,14 +414,22 @@ func (r *Runner) runSteps(ctx context.Context, s *Scenario, attract bool) error 
 
 var errTimeout = errors.New("timeout")
 
-func (r *Runner) waitFor(ctx context.Context, wf *WaitFor, cabinet string) error {
+func (r *Runner) waitFor(ctx context.Context, wf *WaitFor, cabinet, prevJob string) error {
 	timeout := time.Duration(wf.Timeout)
 	if timeout == 0 {
 		timeout = 3 * time.Minute
 	}
 	deadline := time.Now().Add(timeout)
 	for {
-		if Match(wf, r.env.State(), cabinet) {
+		st := r.env.State()
+		skipStaleJob := false
+		if prevJob != "" && strings.Contains(wf.Path, "jobs[0]") {
+			curJob, _ := Lookup(toMap(st), "cabinets.teleporter.jobs[0].name")
+			if curJob == nil || curJob == prevJob {
+				skipStaleJob = true
+			}
+		}
+		if !skipStaleJob && Match(wf, st, cabinet) {
 			return nil
 		}
 		if time.Now().After(deadline) {

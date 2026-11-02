@@ -77,21 +77,23 @@ func (w *World) Snapshot() *WorldState {
 		st.Cluster.Autoscaler.NodeGroups = []NodeGroup{}
 	}
 
-	// Migration jobs (Teleporter) indexed by target pod UID and restored pod name.
+	// Migration jobs (Teleporter) indexed by target pod UID and restored pod UID/name.
 	pmjs := w.migrationJobs()
 	pmjByTargetUID := map[string]*MigrationJob{}
+	pmjByRestoredUID := map[string]*MigrationJob{}
 	pmjByRestored := map[string]*MigrationJob{}
-	pmjTargetUID := map[string]string{}
-	for _, u := range w.listDyn(GVRPodMigrationJob) {
-		pmjTargetUID[u.GetName()] = str(u, "spec", "targetPodUID")
-	}
 	for i := range pmjs {
 		j := &pmjs[i]
-		if uid := pmjTargetUID[j.Name]; uid != "" {
-			pmjByTargetUID[uid] = j
+		if j.TargetUID != "" {
+			pmjByTargetUID[j.TargetUID] = j
+		}
+		if j.RestoredUID != "" {
+			pmjByRestoredUID[j.RestoredUID] = j
 		}
 		if j.RestoredPod != "" {
-			pmjByRestored[j.RestoredPod] = j
+			if _, exists := pmjByRestored[j.RestoredPod]; !exists {
+				pmjByRestored[j.RestoredPod] = j
+			}
 		}
 	}
 
@@ -111,9 +113,9 @@ func (w *World) Snapshot() *WorldState {
 		}
 	}
 
-	// Pods (arcade namespaces only).
+	// Pods (arcade namespaces only; filter to labelled arcade workloads).
 	for _, p := range k8sPods {
-		if !strings.HasPrefix(p.Namespace, "arcade-") {
+		if !strings.HasPrefix(p.Namespace, "arcade-") || !isArcadePod(p) {
 			continue
 		}
 		pc := PodContext{PendingReasonFromEvents: pendingReason[p.Namespace+"/"+p.Name]}
@@ -123,7 +125,9 @@ func (w *World) Snapshot() *WorldState {
 		}
 		if j, ok := pmjByTargetUID[string(p.UID)]; ok {
 			pc.MigrationJob, pc.MigrationPhase = j.Name, j.Phase
-		} else if j, ok := pmjByRestored[p.Name]; ok && p.Namespace == Namespace(CabinetTeleporter) {
+		} else if j, ok := pmjByRestoredUID[string(p.UID)]; ok && p.Namespace == Namespace(CabinetTeleporter) {
+			pc.MigrationJob, pc.MigrationPhase = j.Name, j.Phase
+		} else if j, ok := pmjByRestored[p.Name]; ok && j.RestoredUID == "" && p.Namespace == Namespace(CabinetTeleporter) {
 			pc.MigrationJob, pc.MigrationPhase = j.Name, j.Phase
 		} else if name := p.Annotations[AnnotationAssignedPMJ]; name != "" {
 			for i := range pmjs {
@@ -490,6 +494,16 @@ func round4(f float64) float64 { return float64(int64(f*10000+0.5)) / 10000 }
 
 // ---- Pod Teleporter ----
 
+func isArcadePod(p *corev1.Pod) bool {
+	if p.Labels[LabelWorkload] != "" || p.Labels[LabelPartOf] == PartOfValue || p.Labels[LabelCabinet] != "" {
+		return true
+	}
+	return false
+}
+
+// MigrationJobs returns cached Teleporter PodMigrationJobs, newest first (used by actions).
+func (w *World) MigrationJobs() []MigrationJob { return w.migrationJobs() }
+
 func (w *World) migrationJobs() []MigrationJob {
 	var out []MigrationJob
 	for _, u := range w.listDyn(GVRPodMigrationJob) {
@@ -507,6 +521,8 @@ func (w *World) migrationJobs() []MigrationJob {
 			RestoringAt:    normTime(str(u, "status", "restoringStartTime")),
 			CompletedAt:    normTime(str(u, "status", "completionTime")),
 			RestoredPod:    str(u, "status", "restoredPodName"),
+			RestoredUID:    str(u, "status", "restoredPodUID"),
+			TargetUID:      str(u, "spec", "targetPodUID"),
 		}
 		if j.Phase == "" {
 			j.Phase = "Pending"
@@ -515,7 +531,16 @@ func (w *World) migrationJobs() []MigrationJob {
 		j.RestoredReason = reason
 		out = append(out, j)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt > out[j].StartedAt })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].StartedAt != out[j].StartedAt {
+			return out[i].StartedAt > out[j].StartedAt
+		}
+		ti, tj := IsTerminalPMJ(out[i].Phase), IsTerminalPMJ(out[j].Phase)
+		if ti != tj {
+			return !ti
+		}
+		return out[i].Name > out[j].Name
+	})
 	return out
 }
 
@@ -563,6 +588,14 @@ func (w *World) teleporterState(st *WorldState, jobs []MigrationJob) TeleporterS
 	if petPod != nil {
 		out.Pet.Pod, out.Pet.Node, out.Pet.UID = petPod.Name, petPod.Node, petPod.UID
 	}
+	// Map targetPodUID -> originNodeName so if a restored pod was later migrated
+	// again, we still know which node it ran on.
+	originByTargetUID := map[string]string{}
+	for _, j := range jobs {
+		if j.TargetUID != "" && j.OriginNode != "" {
+			originByTargetUID[j.TargetUID] = j.OriginNode
+		}
+	}
 	if len(jobs) > 10 {
 		jobs = jobs[:10]
 	}
@@ -570,22 +603,45 @@ func (w *World) teleporterState(st *WorldState, jobs []MigrationJob) TeleporterS
 
 	// Last completed migration.
 	for _, j := range jobs {
-		switch j.Phase {
-		case "Succeeded", "SucceededWithoutRestore", "Failed":
-		default:
+		if !IsTerminalPMJ(j.Phase) {
 			continue
 		}
 		lm := &LastMigration{From: j.OriginNode, At: j.CompletedAt}
 		if lm.At == "" {
 			lm.At = j.StartedAt
 		}
-		for _, p := range st.Pods {
-			if j.RestoredPod != "" && p.Name == j.RestoredPod && p.Namespace == Namespace(CabinetTeleporter) {
-				lm.To = p.Node
+		var restoredPod *Pod
+		for i := range st.Pods {
+			p := &st.Pods[i]
+			if p.Namespace != Namespace(CabinetTeleporter) {
+				continue
+			}
+			if j.RestoredUID != "" {
+				if p.UID == j.RestoredUID {
+					restoredPod = p
+					break
+				}
+			} else if j.RestoredPod != "" && p.Name == j.RestoredPod {
+				restoredPod = p
+				break
 			}
 		}
-		if lm.To == "" && petPod != nil && j.Phase != "Failed" {
+		if restoredPod != nil {
+			lm.To = restoredPod.Node
+		}
+		if lm.To == "" && j.RestoredUID != "" {
+			lm.To = originByTargetUID[j.RestoredUID]
+		}
+		if lm.To == "" && petPod != nil && j.Phase != "Failed" && (j.RestoredUID == "" || petPod.UID == j.RestoredUID) {
 			lm.To = petPod.Node
+		}
+		if lm.To == "" && j.Phase != "Failed" && j.OriginNode != "" {
+			for _, gn := range out.GvisorNodes {
+				if gn != j.OriginNode {
+					lm.To = gn
+					break
+				}
+			}
 		}
 		switch {
 		case j.Phase == "Failed":
@@ -599,28 +655,27 @@ func (w *World) teleporterState(st *WorldState, jobs []MigrationJob) TeleporterS
 		default:
 			lm.Restored = "inferred"
 		}
-		start := parseTime(j.SnapshottingAt)
-		if start.IsZero() {
-			start = parseTime(j.StartedAt)
-		}
-		end := time.Time{}
-		if pet, _ := w.Memory.Pet(); pet != nil && pet.RestoredAt != "" {
-			if t := parseTime(pet.RestoredAt); t.After(start) {
-				end = t
+		if lm.Restored == "verified" || lm.Restored == "inferred" {
+			start := parseTime(j.SnapshottingAt)
+			if start.IsZero() {
+				start = parseTime(j.StartedAt)
 			}
-		}
-		if end.IsZero() {
-			for _, p := range st.Pods {
-				if p.Name == j.RestoredPod && p.Namespace == Namespace(CabinetTeleporter) && p.ReadyAt != "" {
-					end = parseTime(p.ReadyAt)
+			end := time.Time{}
+			comp := parseTime(j.CompletedAt)
+			if pet, _ := w.Memory.Pet(); pet != nil && pet.RestoredAt != "" {
+				if t := parseTime(pet.RestoredAt); t.After(start) && (comp.IsZero() || !t.After(comp.Add(10*time.Second))) {
+					end = t
 				}
 			}
-		}
-		if end.IsZero() {
-			end = parseTime(j.CompletedAt)
-		}
-		if !start.IsZero() && end.After(start) {
-			lm.DowntimeMs = end.Sub(start).Milliseconds()
+			if end.IsZero() && restoredPod != nil && restoredPod.ReadyAt != "" {
+				end = parseTime(restoredPod.ReadyAt)
+			}
+			if end.IsZero() {
+				end = comp
+			}
+			if !start.IsZero() && end.After(start) {
+				lm.DowntimeMs = end.Sub(start).Milliseconds()
+			}
 		}
 		out.LastMigration = lm
 		break
@@ -669,19 +724,22 @@ func (w *World) absorberState(st *WorldState) AbsorberState {
 	}
 
 	// Burst stopwatch.
-	started := w.Memory.BurstStarted()
+	started, target, priorUIDs := w.Memory.BurstInfo()
 	if d := w.deployment(ns, "burst-worker"); d != nil {
 		if d.Spec.Replicas != nil {
 			out.Burst.Desired = int(*d.Spec.Replicas)
 		}
 		out.Burst.Ready = int(d.Status.ReadyReplicas)
 	}
+	if !started.IsZero() && target > out.Burst.Desired {
+		out.Burst.Desired = target
+	}
 	if !started.IsZero() {
 		out.Burst.StartedAt = rfc3339(started)
 		var last time.Time
 		readyCount := 0
 		for _, p := range st.Pods {
-			if p.Cabinet != CabinetAbsorber || p.Workload != "burst-worker" || p.Deleting {
+			if p.Cabinet != CabinetAbsorber || p.Workload != "burst-worker" || p.Deleting || priorUIDs[p.UID] {
 				continue
 			}
 			created := parseTime(p.Created)
@@ -698,7 +756,11 @@ func (w *World) absorberState(st *WorldState) AbsorberState {
 			}
 		}
 		sort.Slice(out.Burst.PerPodReadyMs, func(i, j int) bool { return out.Burst.PerPodReadyMs[i] < out.Burst.PerPodReadyMs[j] })
-		if out.Burst.Desired > 0 && readyCount >= out.Burst.Desired {
+		needNew := out.Burst.Desired - len(priorUIDs)
+		if needNew < 1 {
+			needNew = 1
+		}
+		if out.Burst.Desired > 0 && readyCount >= needNew {
 			out.Burst.AllReadyAt = rfc3339(last)
 		}
 	}
@@ -785,6 +847,9 @@ func (w *World) lightsState() LightsState {
 			out.HPA.ScalingActive = c.Status == corev1.ConditionTrue
 		}
 	}
+	if out.HPA.Current > 0 || out.HPA.Desired > 0 || out.QueueDepth > 0 {
+		out.HPA.ScaledToZero = false
+	}
 	for _, m := range h.Spec.Metrics {
 		if m.External != nil {
 			out.MetricName = m.External.Metric.Name
@@ -840,7 +905,7 @@ func (w *World) nitroState(st *WorldState, k8sPods []*corev1.Pod, evs []*corev1.
 			}
 		}
 	}
-	started := w.Memory.RaceStarted()
+	started, priorUIDs := w.Memory.RaceInfo()
 	if started.IsZero() {
 		return out
 	}
@@ -858,7 +923,7 @@ func (w *World) nitroState(st *WorldState, k8sPods []*corev1.Pod, evs []*corev1.
 		var pick *Pod
 		for i := range st.Pods {
 			p := &st.Pods[i]
-			if p.Cabinet != CabinetNitro || p.Workload != name || p.Buffer {
+			if p.Cabinet != CabinetNitro || p.Workload != name || p.Buffer || priorUIDs[p.UID] {
 				continue
 			}
 			if parseTime(p.Created).Before(started.Add(-2 * time.Second)) {

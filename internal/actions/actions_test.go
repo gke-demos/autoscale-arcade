@@ -87,15 +87,18 @@ func TestClimberLockUnlock(t *testing.T) {
 }
 
 func TestSpotRatioAndStockout(t *testing.T) {
-	spotNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "spot-1", Labels: map[string]string{world.LabelComputeClass: "arcade-spot", world.LabelSpot: "true"}}}
+	spotNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "spot-1", Labels: map[string]string{world.LabelSpotCabinet: world.CabinetSpot, world.LabelSpot: "true"}}}
 	a, dyn := newTestActions(t, spotNode)
 	ctx := context.Background()
-	if err := a.Do(ctx, "spot.ratio", json.RawMessage(`{"spotRatio":250}`)); err != nil {
+	if err := a.Do(ctx, "spot.ratio", json.RawMessage(`{"spotRatio":250}`)); err == nil {
+		t.Error("out-of-range spotRatio must fail")
+	}
+	if err := a.Do(ctx, "spot.ratio", json.RawMessage(`{"spotRatio":50}`)); err != nil {
 		t.Fatal(err)
 	}
 	wc, _ := dyn.Resource(world.GVRWorkloadClass).Namespace("arcade-spot").Get(ctx, "checkout", metav1.GetOptions{})
-	if r, _, _ := unstructured.NestedString(wc.Object, "spec", "capacityStrategy", "spotRatio"); r != "100%" {
-		t.Errorf("ratio clamped: %q", r)
+	if r, _, _ := unstructured.NestedString(wc.Object, "spec", "capacityStrategy", "spotRatio"); r != "50%" {
+		t.Errorf("ratio: %q", r)
 	}
 	if err := a.Do(ctx, "spot.ratio", json.RawMessage(`{}`)); err == nil {
 		t.Error("spotRatio required")
@@ -106,8 +109,12 @@ func TestSpotRatioAndStockout(t *testing.T) {
 	if err := a.Do(ctx, "spot.stockout", json.RawMessage(`{"enabled":true}`)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := dyn.Resource(world.GVRCapacityQuota).Get(ctx, world.StockoutQuotaName, metav1.GetOptions{}); err != nil {
+	q, err := dyn.Resource(world.GVRCapacityQuota).Get(ctx, world.StockoutQuotaName, metav1.GetOptions{})
+	if err != nil {
 		t.Fatalf("quota not created: %v", err)
+	}
+	if cab, _, _ := unstructured.NestedString(q.Object, "spec", "selector", "matchLabels", world.LabelSpotCabinet); cab != world.CabinetSpot {
+		t.Errorf("quota selector cabinet: %q", cab)
 	}
 	if !a.World.Memory.Stockout() {
 		t.Error("memory flag")
@@ -137,8 +144,14 @@ func TestScaleAndRace(t *testing.T) {
 	}
 	a, _ := newTestActions(t, deps...)
 	ctx := context.Background()
+	if err := a.Do(ctx, "climber.scale", json.RawMessage(`{"replicas":500}`)); err == nil {
+		t.Error("out-of-range climber.scale must fail")
+	}
 	if err := a.Do(ctx, "climber.scale", json.RawMessage(`{"replicas":24}`)); err != nil {
 		t.Fatal(err)
+	}
+	if err := a.Do(ctx, "teleporter.migrate", json.RawMessage(`{"toNode":"nope"}`)); err == nil {
+		t.Error("unknown target node must fail")
 	}
 	d, _ := a.World.Clients.Kube.AppsV1().Deployments("arcade-climber").Get(ctx, "climber", metav1.GetOptions{})
 	if d.Spec.Replicas == nil || *d.Spec.Replicas != 24 {

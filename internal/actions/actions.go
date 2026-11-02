@@ -23,8 +23,12 @@ import (
 	"github.com/gke-demos/autoscale-arcade/internal/world"
 )
 
-// ErrUnknown is returned for an action name that does not exist.
-var ErrUnknown = errors.New("unknown action")
+// Sentinel errors mapped to HTTP status codes by the server.
+var (
+	ErrUnknown    = errors.New("unknown action")
+	ErrBadRequest = errors.New("bad body")
+	ErrConflict   = errors.New("bad body: conflict")
+)
 
 // ScenarioController is implemented by the scenario runner (scenario.run / scenario.stop).
 type ScenarioController interface {
@@ -91,23 +95,32 @@ func (a *Actions) Do(ctx context.Context, name string, body json.RawMessage) err
 		Name      string `json:"name"`
 	}
 	if err := json.Unmarshal(body, &p); err != nil {
-		return fmt.Errorf("bad body: %w", err)
+		return fmt.Errorf("%w: bad body: %v", ErrBadRequest, err)
 	}
 	log := a.Log.With("action", name)
 	log.Info("action", "body", string(body))
 	ns := world.Namespace
 	switch name {
 	case "climber.scale":
-		return a.scale(ctx, ns(world.CabinetClimber), "climber", need(p.Replicas, 0, 48))
+		r, err := inRange("replicas", p.Replicas, 0, 32)
+		if err != nil {
+			return err
+		}
+		return a.scale(ctx, ns(world.CabinetClimber), "climber", r)
 	case "climber.lock":
 		return a.climberLock(ctx, p.Locked != nil && *p.Locked)
 	case "spot.scale":
-		return a.scale(ctx, ns(world.CabinetSpot), "checkout", need(p.Replicas, 0, 48))
-	case "spot.ratio":
-		if p.SpotRatio == nil {
-			return errors.New("spotRatio required")
+		r, err := inRange("replicas", p.Replicas, 0, 32)
+		if err != nil {
+			return err
 		}
-		return a.spotRatio(ctx, clamp(*p.SpotRatio, 0, 100))
+		return a.scale(ctx, ns(world.CabinetSpot), "checkout", r)
+	case "spot.ratio":
+		r, err := inRange("spotRatio", p.SpotRatio, 0, 100)
+		if err != nil {
+			return err
+		}
+		return a.spotRatio(ctx, r)
 	case "spot.preempt":
 		return a.preempt(ctx, p.Node)
 	case "spot.stockout":
@@ -129,7 +142,11 @@ func (a *Actions) Do(ctx context.Context, name string, body json.RawMessage) err
 	case "absorber.burst":
 		d := 12
 		if p.Delta != nil {
-			d = *p.Delta
+			var err error
+			d, err = inRange("delta", p.Delta, 1, 32)
+			if err != nil {
+				return err
+			}
 		}
 		return a.burst(ctx, d)
 	case "absorber.reset":
@@ -138,7 +155,11 @@ func (a *Actions) Do(ctx context.Context, name string, body json.RawMessage) err
 	case "lights.coin":
 		n := 1
 		if p.Count != nil {
-			n = clamp(*p.Count, 1, 500)
+			var err error
+			n, err = inRange("count", p.Count, 1, 500)
+			if err != nil {
+				return err
+			}
 		}
 		a.World.Memory.Enqueue(n)
 		return nil
@@ -161,11 +182,14 @@ func (a *Actions) Do(ctx context.Context, name string, body json.RawMessage) err
 	return fmt.Errorf("%w: %s", ErrUnknown, name)
 }
 
-func need(v *int, lo, hi int) int {
+func inRange(field string, v *int, lo, hi int) (int, error) {
 	if v == nil {
-		return lo
+		return 0, fmt.Errorf("%w: %s required", ErrBadRequest, field)
 	}
-	return clamp(*v, lo, hi)
+	if *v < lo || *v > hi {
+		return 0, fmt.Errorf("%w: %s %d out of range [%d..%d]", ErrBadRequest, field, *v, lo, hi)
+	}
+	return *v, nil
 }
 
 func clamp(v, lo, hi int) int {
@@ -305,10 +329,10 @@ func (a *Actions) preempt(ctx context.Context, nodeName string) error {
 		}
 	}
 	if node == nil {
-		return fmt.Errorf("node %q not found", nodeName)
+		return fmt.Errorf("%w: node %q not found", ErrBadRequest, nodeName)
 	}
 	if node.Labels[world.LabelSpot] != "true" && node.Labels[world.LabelProvisioning] != "spot" {
-		return fmt.Errorf("node %s is not a Spot node", node.Name)
+		return fmt.Errorf("%w: node %s is not a Spot node", ErrBadRequest, node.Name)
 	}
 	project, zone, instance, err := parseProviderID(node.Spec.ProviderID)
 	if err != nil {
@@ -337,11 +361,11 @@ var GVRCapacityQuota = world.GVRCapacityQuota
 const StockoutQuotaName = world.StockoutQuotaName
 
 // DefaultStockout is the lever chosen by the platform owner: a cluster-scoped
-// CapacityQuota selecting compute-class=arcade-spot + gke-spot=true with
-// limits.resources.nodes "0" (CA then skips every Spot rung and NPAC creates
-// on-demand capacity), plus cordon + evict of the class's existing Spot nodes
+// CapacityQuota selecting arcade.demo/cabinet=spot + gke-spot=true with
+// limits.resources.nodes "0" (CA then caps the spot-spot pool at 0 and scales
+// up the on-demand spot-od pool), plus cordon + evict of existing Spot nodes
 // so the checkout pods fall back. Disengage = delete the quota + uncordon;
-// active migration / Active reversion move the pods back to Spot.
+// Active reversion moves the pods back to Spot.
 func DefaultStockout(ctx context.Context, a *Actions, enabled bool) error {
 	quotas := a.World.Clients.Dynamic.Resource(GVRCapacityQuota)
 	if enabled {
@@ -354,8 +378,8 @@ func DefaultStockout(ctx context.Context, a *Actions, enabled bool) error {
 			},
 			"spec": map[string]any{
 				"selector": map[string]any{"matchLabels": map[string]any{
-					world.LabelComputeClass: "arcade-spot",
-					world.LabelSpot:         "true",
+					world.LabelSpotCabinet: world.CabinetSpot,
+					world.LabelSpot:        "true",
 				}},
 				"limits": map[string]any{"resources": map[string]any{"nodes": "0"}},
 			},
@@ -430,19 +454,24 @@ func ownedByDaemonSet(p *corev1.Pod) bool {
 }
 
 func (a *Actions) evict(ctx context.Context, ns, name string) error {
+	_, err := a.evictPod(ctx, ns, name)
+	return err
+}
+
+func (a *Actions) evictPod(ctx context.Context, ns, name string) (deferred bool, err error) {
 	ev := &policyv1.Eviction{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns}}
-	err := a.World.Clients.Kube.PolicyV1().Evictions(ns).Evict(ctx, ev)
+	err = a.World.Clients.Kube.PolicyV1().Evictions(ns).Evict(ctx, ev)
 	if err != nil && apierrors.IsTooManyRequests(err) {
 		// The pod-migration webhook answers 429 while it takes over the
 		// eviction (PMJ created); a PDB can also say "not now". Either way
 		// the request was accepted by the cluster.
 		a.Log.Info("eviction deferred (429)", "pod", ns+"/"+name, "msg", err.Error())
-		return nil
+		return true, nil
 	}
 	if err != nil {
-		return fmt.Errorf("evict %s/%s: %w", ns, name, err)
+		return false, fmt.Errorf("evict %s/%s: %w", ns, name, err)
 	}
-	return nil
+	return false, nil
 }
 
 // ---- Pod Teleporter ----
@@ -450,6 +479,11 @@ func (a *Actions) evict(ctx context.Context, ns, name string) error {
 // migrate pins StatefulSet/pet to toNode (random other gVisor node when empty)
 // and evicts pet-0 so the pod-migration webhook turns it into a live migration.
 func (a *Actions) migrate(ctx context.Context, toNode string) error {
+	for _, j := range a.World.MigrationJobs() {
+		if !world.IsTerminalPMJ(j.Phase) {
+			return fmt.Errorf("%w: migration %s already in progress (%s)", ErrConflict, j.Name, j.Phase)
+		}
+	}
 	ns := world.Namespace(world.CabinetTeleporter)
 	pet := a.World.Pod(ns, "pet-0")
 	current := ""
@@ -470,7 +504,7 @@ func (a *Actions) migrate(ctx context.Context, toNode string) error {
 	}
 	if toNode == "" {
 		if len(candidates) == 0 {
-			return errors.New("no other ready gVisor node to teleport to")
+			return fmt.Errorf("%w: no other ready gVisor node to teleport to", ErrBadRequest)
 		}
 		toNode = candidates[a.Rand.Intn(len(candidates))]
 	} else {
@@ -482,9 +516,9 @@ func (a *Actions) migrate(ctx context.Context, toNode string) error {
 		}
 		if !ok {
 			if toNode == current {
-				return fmt.Errorf("pet is already on %s", toNode)
+				return fmt.Errorf("%w: pet is already on %s", ErrBadRequest, toNode)
 			}
-			return fmt.Errorf("%s is not a ready gVisor node", toNode)
+			return fmt.Errorf("%w: %s is not a ready gVisor node", ErrBadRequest, toNode)
 		}
 	}
 	patch := fmt.Sprintf(`{"spec":{"template":{"spec":{"nodeSelector":{"kubernetes.io/hostname":%q}}}}}`, toNode)
@@ -494,7 +528,33 @@ func (a *Actions) migrate(ctx context.Context, toNode string) error {
 	if pet == nil {
 		return nil // the StatefulSet will create pet-0 on the target node
 	}
-	return a.evict(ctx, ns, "pet-0")
+	beforePMJs := map[string]bool{}
+	for _, j := range a.World.MigrationJobs() {
+		beforePMJs[j.Name] = true
+	}
+	deferred, err := a.evictPod(ctx, ns, "pet-0")
+	if err != nil {
+		return err
+	}
+	// When the pod-migration webhook intercepted the eviction (429), wait up to
+	// 10s for the new PodMigrationJob to appear in the informer cache so a
+	// caller's immediate waitFor on jobs[0].phase does not read the previous PMJ.
+	if deferred {
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			for _, j := range a.World.MigrationJobs() {
+				if !beforePMJs[j.Name] {
+					return nil
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(50 * time.Millisecond):
+			}
+		}
+	}
+	return nil
 }
 
 // unpinPet removes the hostname pin (reset).
@@ -515,7 +575,7 @@ var presets = map[string][2]int{"none": {0, 0}, "active4": {4, 0}, "active8": {8
 func (a *Actions) absorberPreset(ctx context.Context, preset string) error {
 	p, ok := presets[preset]
 	if !ok {
-		return fmt.Errorf("unknown preset %q (none|active4|active8|standby8)", preset)
+		return fmt.Errorf("%w: unknown preset %q (none|active4|active8|standby8)", ErrBadRequest, preset)
 	}
 	ns := world.Namespace(world.CabinetAbsorber)
 	for i, name := range []string{"absorber-active", "absorber-standby"} {
@@ -537,8 +597,15 @@ func (a *Actions) burst(ctx context.Context, delta int) error {
 	if d.Spec.Replicas != nil {
 		cur = int(*d.Spec.Replicas)
 	}
-	a.World.Memory.SetBurstStarted(time.Now())
-	return a.scale(ctx, ns, "burst-worker", clamp(cur+delta, 0, 64))
+	prior := map[string]bool{}
+	for _, p := range a.World.Pods() {
+		if p.Namespace == ns && p.DeletionTimestamp == nil {
+			prior[string(p.UID)] = true
+		}
+	}
+	target := clamp(cur+delta, 0, 64)
+	a.World.Memory.StartBurst(time.Now(), target, prior)
+	return a.scale(ctx, ns, "burst-worker", target)
 }
 
 // ---- Nitro ----
@@ -546,13 +613,19 @@ func (a *Actions) burst(ctx context.Context, delta int) error {
 func (a *Actions) race(ctx context.Context) error {
 	ns := world.Namespace(world.CabinetNitro)
 	now := time.Now()
+	prior := map[string]bool{}
+	for _, p := range a.World.Pods() {
+		if p.Namespace == ns {
+			prior[string(p.UID)] = true
+		}
+	}
 	for _, name := range []string{"stock", "nitro"} {
 		patch := fmt.Sprintf(`{"spec":{"replicas":1,"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":%q,"arcade.gke.io/race":%q}}}}}`, now.Format(time.RFC3339), now.Format(time.RFC3339Nano))
 		if _, err := a.World.Clients.Kube.AppsV1().Deployments(ns).Patch(ctx, name, types.StrategicMergePatchType, []byte(patch), metav1.PatchOptions{FieldManager: "arcade"}); err != nil {
 			return fmt.Errorf("restart %s: %w", name, err)
 		}
 	}
-	a.World.Memory.SetRaceStarted(now)
+	a.World.Memory.StartRace(now, prior)
 	return nil
 }
 
@@ -575,7 +648,7 @@ func (a *Actions) Reset(ctx context.Context, cabinet string) error {
 				err = a.Stockout(ctx, a, false)
 				a.World.Memory.SetStockout(false)
 			}
-			err = errors.Join(err, a.scale(ctx, world.Namespace(id), "checkout", 6), a.spotRatio(ctx, 80))
+			err = errors.Join(err, a.scale(ctx, world.Namespace(id), "checkout", 10), a.spotRatio(ctx, 80))
 		case world.CabinetTeleporter:
 			err = a.unpinPet(ctx)
 		case world.CabinetAbsorber:
@@ -587,7 +660,7 @@ func (a *Actions) Reset(ctx context.Context, cabinet string) error {
 			a.World.Memory.SetRaceStarted(time.Time{})
 			err = errors.Join(a.scale(ctx, world.Namespace(id), "stock", 1), a.scale(ctx, world.Namespace(id), "nitro", 1))
 		default:
-			err = fmt.Errorf("unknown cabinet %q", id)
+			err = fmt.Errorf("%w: unknown cabinet %q", ErrBadRequest, id)
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", id, err))

@@ -18,7 +18,10 @@ type Memory struct {
 	stockout bool
 
 	burstStartedAt time.Time
+	burstTarget    int
+	burstPriorUIDs map[string]bool
 	raceStartedAt  time.Time
+	racePriorUIDs  map[string]bool
 
 	pet         *PetState
 	petSeen     time.Time
@@ -90,11 +93,17 @@ func (m *Memory) Stockout() bool {
 	return m.stockout
 }
 
-func (m *Memory) SetBurstStarted(t time.Time) {
+func (m *Memory) StartBurst(t time.Time, target int, priorUIDs map[string]bool) {
 	m.mu.Lock()
 	m.burstStartedAt = t
+	m.burstTarget = target
+	m.burstPriorUIDs = priorUIDs
 	m.mu.Unlock()
 	m.changed()
+}
+
+func (m *Memory) SetBurstStarted(t time.Time) {
+	m.StartBurst(t, 0, nil)
 }
 
 func (m *Memory) BurstStarted() time.Time {
@@ -103,17 +112,34 @@ func (m *Memory) BurstStarted() time.Time {
 	return m.burstStartedAt
 }
 
-func (m *Memory) SetRaceStarted(t time.Time) {
+func (m *Memory) BurstInfo() (time.Time, int, map[string]bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.burstStartedAt, m.burstTarget, m.burstPriorUIDs
+}
+
+func (m *Memory) StartRace(t time.Time, priorUIDs map[string]bool) {
 	m.mu.Lock()
 	m.raceStartedAt = t
+	m.racePriorUIDs = priorUIDs
 	m.mu.Unlock()
 	m.changed()
+}
+
+func (m *Memory) SetRaceStarted(t time.Time) {
+	m.StartRace(t, nil)
 }
 
 func (m *Memory) RaceStarted() time.Time {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.raceStartedAt
+}
+
+func (m *Memory) RaceInfo() (time.Time, map[string]bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.raceStartedAt, m.racePriorUIDs
 }
 
 // PetTelemetry records the latest PetState from the pet and fans it out to

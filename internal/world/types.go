@@ -217,6 +217,13 @@ type MigrationJob struct {
 	CompletedAt    string `json:"completedAt,omitempty"`
 	RestoredReason string `json:"restoredReason,omitempty"`
 	RestoredPod    string `json:"restoredPod,omitempty"`
+	RestoredUID    string `json:"-"`
+	TargetUID      string `json:"-"`
+}
+
+// IsTerminalPMJ reports whether a PodMigrationJob phase is terminal.
+func IsTerminalPMJ(phase string) bool {
+	return phase == "Succeeded" || phase == "SucceededWithoutRestore" || phase == "Failed"
 }
 
 type LastMigration struct {
