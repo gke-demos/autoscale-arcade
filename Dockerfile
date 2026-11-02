@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1.7
+# Single image for the Autoscale Arcade: `arcade server|pet|worker`.
+# Stage 1 builds the R3F UI, stage 2 the static Go binary with the UI embedded,
+# stage 3 is distroless. Build with BuildKit (Cloud Build: see cloudbuild.yaml).
+
+# ---- UI -------------------------------------------------------------------
+FROM node:24-alpine AS web
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json* ./
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+COPY web/ ./
+RUN npm run build && test -f dist/index.html
+
+# ---- Go --------------------------------------------------------------------
+FROM golang:1.24-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum* ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY . .
+# The server embeds internal/server/dist (see internal/server/ui.go); replace
+# the placeholder with the real UI build.
+COPY --from=web /src/web/dist/ ./internal/server/dist/
+ARG VERSION=dev
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath \
+      -ldflags="-s -w -X main.version=${VERSION}" \
+      -o /out/arcade ./cmd/arcade
+
+# ---- Runtime ---------------------------------------------------------------
+FROM gcr.io/distroless/static-debian12:nonroot
+LABEL org.opencontainers.image.source="https://github.com/gke-demos/autoscale-arcade" \
+      org.opencontainers.image.title="autoscale-arcade" \
+      org.opencontainers.image.description="Autoscale Arcade: arcade-server, pet and workers in one binary"
+COPY --from=build /out/arcade /arcade
+USER nonroot:nonroot
+EXPOSE 8080
+ENTRYPOINT ["/arcade"]
+CMD ["server"]

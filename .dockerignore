@@ -1,0 +1,23 @@
+# VCS / editors
+.git
+.github
+.gitignore
+.vscode
+.idea
+*.md
+!web/**/*.md
+LICENSE
+
+# Local build output and deps (rebuilt inside the image)
+bin/
+web/node_modules/
+web/dist/
+internal/server/dist/*
+!internal/server/dist/index.html
+
+# Not needed in the image (scenarios/ is kept: the server may embed it)
+docs/
+hack/
+manifests/
+.env
+*.local
