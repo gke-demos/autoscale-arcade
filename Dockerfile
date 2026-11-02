@@ -7,7 +7,25 @@
 FROM node:24-alpine AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json* ./
+# A lockfile generated behind a corporate npm proxy carries private `resolved`
+# URLs. Drop those so npm ci fetches from the public registry (integrity hashes
+# are kept and still verified).
+RUN <<'SH'
+set -e
+if [ -f package-lock.json ]; then node <<'JS'
+const fs = require("fs");
+const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+let n = 0;
+for (const p of Object.values(lock.packages || {})) {
+  if (p.resolved && !p.resolved.startsWith("https://registry.npmjs.org/")) { delete p.resolved; n++; }
+}
+fs.writeFileSync("package-lock.json", JSON.stringify(lock, null, 2));
+console.log("normalised", n, "resolved urls");
+JS
+fi
+SH
 RUN --mount=type=cache,target=/root/.npm \
+    npm config set registry https://registry.npmjs.org/ && \
     if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
 COPY web/ ./
 RUN npm run build && test -f dist/index.html
