@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { ago } from '../lib/format';
 import { ClusterScene } from '../scene/ClusterScene';
 import { useArcade } from '../store';
-import type { Node, WorldState } from '../types';
+import type { ClimberState, Node, WorldState } from '../types';
 import { ActionButton, Badge, ControlGroup, CostMeter, Stat, Stopwatch, eventsSection, podTable, shortNodeName, useCabinetLayout } from './common';
 import type { CabinetModule, CabinetProps, HudSection } from './types';
 
@@ -29,11 +29,18 @@ function nodeCost(n: Node): number {
 
 // ---- data helpers ---------------------------------------------------------
 
+/** The server numbers rungs from 0 (priority array index); the UI talks about "rung #1". */
+function climberState(world: WorldState): ClimberState {
+  const c = world.cabinets.climber;
+  if (!c.rungs.length || !c.rungs.some((r) => r.index === 0)) return c;
+  return { ...c, rungs: c.rungs.map((r) => ({ ...r, index: r.index + 1 })) };
+}
+
 /** Node name → rung index (1-based) from `world.cabinets.climber.rungs`, falling back to pool membership. */
 function rungOfNode(world: WorldState): (n: Node) => number | undefined {
   const byName = new Map<string, number>();
   const byPool = new Map<string, number>();
-  for (const r of world.cabinets.climber.rungs) {
+  for (const r of climberState(world).rungs) {
     for (const name of r.nodes) {
       byName.set(name, r.index);
       const n = world.nodes.find((x) => x.name === name);
@@ -55,7 +62,7 @@ function climberNodes(world: WorldState): Node[] {
 // ---- 3D ---------------------------------------------------------------------
 
 function Scene({ world }: CabinetProps) {
-  const c = world.cabinets.climber;
+  const c = climberState(world);
   const rung = useMemo(() => rungOfNode(world), [world]);
   const rungLabel = useMemo(() => new Map(c.rungs.map((r) => [r.index, r.label])), [c.rungs]);
   const layout = useCabinetLayout(world, 'climber', {
@@ -133,7 +140,7 @@ function LockChip({ label }: { label: string }) {
 // ---- Controls -----------------------------------------------------------------
 
 function Controls({ world }: CabinetProps) {
-  const c = world.cabinets.climber;
+  const c = climberState(world);
   const act = useArcade((s) => s.act);
   const busy = useArcade((s) => s.busy['climber.scale']);
   const locked = c.computeClass.locked;
@@ -237,7 +244,7 @@ function Controls({ world }: CabinetProps) {
 // ---- Status (bottom bar) ----------------------------------------------------
 
 function Status({ world }: CabinetProps) {
-  const c = world.cabinets.climber;
+  const c = climberState(world);
   const setPrompt = useArcade((s) => s.setLeaderboardPrompt);
   const [startedAt, setStartedAt] = useState<string | undefined>(undefined);
   const [stoppedAt, setStoppedAt] = useState<string | undefined>(undefined);
@@ -281,7 +288,7 @@ function Status({ world }: CabinetProps) {
 // ---- HUD --------------------------------------------------------------------
 
 function hud(world: WorldState): HudSection[] {
-  const c = world.cabinets.climber;
+  const c = climberState(world);
   const now = Date.now();
   const nodes = climberNodes(world);
   const pools = new Set(nodes.map((n) => n.pool));

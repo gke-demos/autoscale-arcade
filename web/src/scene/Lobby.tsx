@@ -16,7 +16,7 @@ export function Lobby({ world }: { world: WorldState }) {
   const spacing = 5.6;
   const rowW = spacing * (CABINET_IDS.length - 1);
   const halfW = Math.max(clusterW / 2, rowW / 2 + 2.5);
-  const clusterZ = -(layout.bounds.maxZ + 5);
+  const clusterZ = -(layout.bounds.maxZ + 8);
   const framed = useMemo(
     () => ({ ...layout, bounds: { minX: -halfW - 2, maxX: halfW + 2, minZ: clusterZ + layout.bounds.minZ, maxZ: 5 } }),
     [layout, halfW, clusterZ],

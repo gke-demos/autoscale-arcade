@@ -125,7 +125,7 @@ export function NodeSlab({
     } else {
       tmpColor.set(highlight === 'target' ? '#e9d5ff' : highlight === 'valid' ? '#a78bfa' : highlight === 'origin' ? '#facc15' : base);
       m.emissive.lerp(tmpColor, 0.15);
-      const target = highlight === 'target' ? 0.75 : highlight === 'valid' ? 0.4 + 0.15 * Math.sin(t * 5) : highlight === 'origin' ? 0.45 : selected ? 0.7 : 0.4;
+      const target = highlight === 'target' ? 0.6 : highlight === 'valid' ? 0.3 + 0.12 * Math.sin(t * 5) : highlight === 'origin' ? 0.4 : selected ? 0.7 : 0.4;
       m.emissiveIntensity += (target - m.emissiveIntensity) * 0.2;
       m.opacity += (0.9 - m.opacity) * 0.1;
     }

@@ -258,6 +258,7 @@ function JobTimeline({ job, now }: { job: WorldState['cabinets']['teleporter']['
 /** The pet's 2D bouncing ball, drawn from {type:"pet"} telemetry. */
 function PetBall() {
   const ref = useRef<HTMLCanvasElement>(null);
+  const bounds = useRef({ w: 0, h: 0 });
   useEffect(() => {
     let raf = 0;
     const draw = () => {
@@ -272,9 +273,13 @@ function PetBall() {
         ctx.lineWidth = 2;
         ctx.strokeRect(1, 1, w - 2, h - 2);
         if (pet) {
-          // ball coordinates are in the pet's own box; normalise by observed max (100×60 default)
-          const bx = (pet.ball.x / 100) * w;
-          const by = (pet.ball.y / 60) * h;
+          // The pet's box is implementation-defined (the real pet uses 0..1, the mock 100×60):
+          // normalise by the largest coordinates seen so far.
+          const b = bounds.current;
+          b.w = Math.max(b.w, pet.ball.x, 1e-6);
+          b.h = Math.max(b.h, pet.ball.y, 1e-6);
+          const bx = (pet.ball.x / b.w) * w;
+          const by = (pet.ball.y / b.h) * h;
           const g = ctx.createRadialGradient(bx, by, 1, bx, by, 12);
           g.addColorStop(0, '#fff');
           g.addColorStop(0.4, '#c4b5fd');
