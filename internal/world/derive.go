@@ -22,6 +22,7 @@ const (
 	LabelComputeClass  = "cloud.google.com/compute-class"
 	LabelSandbox       = "sandbox.gke.io/runtime"
 	LabelHostname      = "kubernetes.io/hostname"
+	LabelSpotCabinet   = "arcade.demo/cabinet" // dedicated Spot On node pools carry arcade.demo/cabinet=spot
 
 	TaintToBeDeleted    = "ToBeDeletedByClusterAutoscaler"
 	TaintStandbySuspend = "buffer.gke.io/standby-capacity-node-suspended"

@@ -298,7 +298,7 @@ func (a *Actions) preempt(ctx context.Context, nodeName string) error {
 	if node == nil {
 		// Pick any Spot node of the Spot On class when none given.
 		for _, n := range a.World.Nodes() {
-			if n.Labels[world.LabelSpot] == "true" && (nodeName == "" || nodeName == "any") && n.Labels[world.LabelComputeClass] == "arcade-spot" {
+			if n.Labels[world.LabelSpot] == "true" && (nodeName == "" || nodeName == "any") && isSpotCabinetNode(n) {
 				node = n
 				break
 			}
@@ -364,7 +364,7 @@ func DefaultStockout(ctx context.Context, a *Actions, enabled bool) error {
 			return fmt.Errorf("create CapacityQuota/%s: %w", StockoutQuotaName, err)
 		}
 		for _, n := range a.World.Nodes() {
-			if n.Labels[world.LabelComputeClass] != "arcade-spot" || n.Labels[world.LabelSpot] != "true" {
+			if !isSpotCabinetNode(n) || n.Labels[world.LabelSpot] != "true" {
 				continue
 			}
 			if err := a.cordon(ctx, n.Name, true); err != nil {
@@ -380,13 +380,19 @@ func DefaultStockout(ctx context.Context, a *Actions, enabled bool) error {
 		return fmt.Errorf("delete CapacityQuota/%s: %w", StockoutQuotaName, err)
 	}
 	for _, n := range a.World.Nodes() {
-		if n.Labels[world.LabelComputeClass] == "arcade-spot" && n.Spec.Unschedulable {
+		if isSpotCabinetNode(n) && n.Spec.Unschedulable {
 			if err := a.cordon(ctx, n.Name, false); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// isSpotCabinetNode matches the Spot On cabinet's nodes: ComputeClass
+// arcade-spot (NPAC) or the dedicated pools labelled arcade.demo/cabinet=spot.
+func isSpotCabinetNode(n *corev1.Node) bool {
+	return n.Labels[world.LabelComputeClass] == "arcade-spot" || n.Labels[world.LabelSpotCabinet] == world.CabinetSpot
 }
 
 func (a *Actions) cordon(ctx context.Context, node string, on bool) error {

@@ -800,7 +800,11 @@ func (w *World) lightsState() LightsState {
 			}
 			if q != nil {
 				v := float64(q.MilliValue()) / 1000
-				out.HPA.MetricValue = &v
+				// While scaled to zero the HPA reports math.MinInt64 (no
+				// pods to average over): that is "no value", not a number.
+				if v > -1e15 {
+					out.HPA.MetricValue = &v
+				}
 			}
 		}
 	}
