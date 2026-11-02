@@ -1,0 +1,78 @@
+# Public entrypoint: https://autoscale-arcade.demo.gke.ninja (docs/adr/0005).
+#
+# Prerequisites (hack/cluster.sh network): global static IP `autoscale-arcade-ip`,
+# DNS A record in zone demo-gke-ninja, Certificate Manager map
+# `star-demo-gke-ninja` (*.demo.gke.ninja) in the same project.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: arcade
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: system
+  annotations:
+    networking.gke.io/certmap: star-demo-gke-ninja
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  addresses:
+    - type: NamedAddress
+      value: autoscale-arcade-ip
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      allowedRoutes:
+        namespaces:
+          from: Same
+    # Plain HTTP is only there to redirect to HTTPS (see HTTPRoute arcade-redirect).
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: arcade
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: system
+spec:
+  parentRefs:
+    - name: arcade
+      sectionName: https
+  hostnames:
+    - autoscale-arcade.demo.gke.ninja
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: arcade-server
+          port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: arcade-redirect
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: system
+spec:
+  parentRefs:
+    - name: arcade
+      sectionName: http
+  hostnames:
+    - autoscale-arcade.demo.gke.ninja
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

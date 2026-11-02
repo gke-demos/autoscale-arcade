@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bootstraps the Autoscale Arcade GKE cluster.
 #
-#   PROJECT_ID=… REGION=us-central1 CLUSTER=autoscale-arcade ./hack/cluster.sh [all|cluster|gvisor|storage|addons|credentials]
+#   PROJECT_ID=… REGION=us-central1 CLUSTER=autoscale-arcade ./hack/cluster.sh [all|cluster|gvisor|storage|credentials|addons|verify|network]
 #
 # Idempotent: every phase checks before it creates. Private nodes, DNS-only
 # control-plane endpoint (no public or private IP endpoint), Workload Identity,
@@ -20,8 +20,14 @@ GVISOR_NODES_PER_ZONE="${GVISOR_NODES_PER_ZONE:-1}"            # regional cluste
 BUCKET="${BUCKET:-${PROJECT_ID}-${CLUSTER}-snapshots}"
 CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.20.2}"
 WORKLOAD_CLASS_REF="${WORKLOAD_CLASS_REF:-main}"
-POD_MIGRATION_IMAGE="${POD_MIGRATION_IMAGE:-ghcr.io/gke-labs/pod-migration-controller:latest}"
+POD_MIGRATION_REF="${POD_MIGRATION_REF:-main}"
+# Built from gke-labs/pod-migration@eab05c0 with Cloud Build (see hack/preflight.sh for the build command).
+POD_MIGRATION_IMAGE="${POD_MIGRATION_IMAGE:-us-central1-docker.pkg.dev/${PROJECT_ID}/autoscale-arcade/pod-migration-controller:latest}"
 SNAPSHOT_NAMESPACES="${SNAPSHOT_NAMESPACES:-arcade-teleporter}"
+GATEWAY_IP_NAME="${GATEWAY_IP_NAME:-autoscale-arcade-ip}"
+HOSTNAME_FQDN="${HOSTNAME_FQDN:-autoscale-arcade.demo.gke.ninja}"
+DNS_ZONE="${DNS_ZONE:-demo-gke-ninja}"
+CERT_MAP="${CERT_MAP:-star-demo-gke-ninja}"
 
 phase="${1:-all}"
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
@@ -106,9 +112,9 @@ install_addons() {
   kubectl apply -f "https://raw.githubusercontent.com/gke-labs/workload-class/${WORKLOAD_CLASS_REF}/dist/install.yaml"
   kubectl rollout status -n workload-class-system deployment --timeout=5m
 
-  log "Installing pod-migration controller"
+  log "Installing pod-migration controller (${POD_MIGRATION_REF}, image ${POD_MIGRATION_IMAGE})"
   local tmp; tmp="$(mktemp -d)"
-  git clone --depth 1 -q https://github.com/gke-labs/pod-migration "${tmp}/pm"
+  git clone --depth 1 -q --branch "${POD_MIGRATION_REF}" https://github.com/gke-labs/pod-migration "${tmp}/pm"
   kubectl apply -f "${tmp}/pm/controller/config/crd/bases/"
   sed "s|<YOUR_CONTROLLER_IMAGE>|${POD_MIGRATION_IMAGE}|" "${tmp}/pm/controller/deploy.yaml" | kubectl apply -f -
   kubectl rollout status -n pod-migration-system deployment/pod-migration-controller --timeout=5m
@@ -123,6 +129,9 @@ kind: PodMigration
 metadata:
   name: arcade
   namespace: ${ns}
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: teleporter
 spec:
   storage:
     location: gs://${BUCKET}/snapshots
@@ -130,13 +139,57 @@ EOF
   done
 }
 
+verify_addons() {
+  log "Addon health"
+  kubectl get deploy -n cert-manager
+  kubectl get deploy -n workload-class-system
+  kubectl get deploy -n pod-migration-system
+  for ns in ${SNAPSHOT_NAMESPACES}; do
+    kubectl get podmigration -n "${ns}" arcade -o wide
+    kubectl get podsnapshotpolicy -n "${ns}"
+  done
+  kubectl get podsnapshotstorageconfig
+  kubectl get validatingwebhookconfiguration,mutatingwebhookconfiguration | grep -E 'podmigration|workload-class|cert-manager|^.*webhook-configuration ' || true
+}
+
+# Static global IP + DNS A record for the Gateway (manifests/90-gateway).
+# The certificate map (CERT_MAP) and the DNS zone must already exist in the
+# project; see docs/adr/0005 for the project caveat.
+create_network() {
+  if ! gcloud compute addresses describe "${GATEWAY_IP_NAME}" --global --project "${PROJECT_ID}" >/dev/null 2>&1; then
+    log "Reserving global static IP ${GATEWAY_IP_NAME}"
+    gcloud compute addresses create "${GATEWAY_IP_NAME}" --global --ip-version IPV4 --project "${PROJECT_ID}" \
+      --description "Autoscale Arcade Gateway (${HOSTNAME_FQDN})"
+  fi
+  local ip
+  ip="$(gcloud compute addresses describe "${GATEWAY_IP_NAME}" --global --project "${PROJECT_ID}" --format='value(address)')"
+  log "Gateway IP ${ip}"
+  if ! gcloud certificate-manager maps describe "${CERT_MAP}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+    echo "certificate map ${CERT_MAP} not found in ${PROJECT_ID}; create one for *.demo.gke.ninja first (docs/adr/0005)" >&2
+    return 1
+  fi
+  local current
+  current="$(gcloud dns record-sets list --zone "${DNS_ZONE}" --project "${PROJECT_ID}" --name "${HOSTNAME_FQDN}." --type A --format='value(rrdatas[0])' 2>/dev/null || true)"
+  if [[ "${current}" == "${ip}" ]]; then
+    log "DNS ${HOSTNAME_FQDN} already -> ${ip}"
+  elif [[ -z "${current}" ]]; then
+    log "Creating DNS A ${HOSTNAME_FQDN} -> ${ip}"
+    gcloud dns record-sets create "${HOSTNAME_FQDN}." --zone "${DNS_ZONE}" --project "${PROJECT_ID}" --type A --ttl 60 --rrdatas "${ip}"
+  else
+    log "Updating DNS A ${HOSTNAME_FQDN} ${current} -> ${ip}"
+    gcloud dns record-sets update "${HOSTNAME_FQDN}." --zone "${DNS_ZONE}" --project "${PROJECT_ID}" --type A --ttl 60 --rrdatas "${ip}"
+  fi
+}
+
 case "${phase}" in
   cluster)     ensure_apis; create_cluster ;;
   gvisor)      create_gvisor_pool ;;
   storage)     create_storage ;;
   credentials) get_credentials ;;
-  addons)      get_credentials; install_addons ;;
-  all)         ensure_apis; create_cluster; create_gvisor_pool; create_storage; get_credentials; install_addons ;;
+  addons)      get_credentials; install_addons; verify_addons ;;
+  verify)      verify_addons ;;
+  network)     create_network ;;
+  all)         ensure_apis; create_cluster; create_gvisor_pool; create_storage; get_credentials; install_addons; verify_addons; create_network ;;
   *) echo "unknown phase ${phase}"; exit 1 ;;
 esac
 log "Done (${phase})"

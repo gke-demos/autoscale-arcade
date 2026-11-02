@@ -1,0 +1,93 @@
+# The three arcade ComputeClasses (docs/design.md §4.1, §4.2, §4.4).
+# All capacity comes from node pool auto-creation (NAP-less NPAC, GKE >= 1.33.3).
+# Pods select a class with nodeSelector cloud.google.com/compute-class: <name>
+# and must NOT also select gke-spot / machine-family (GKE rejects that).
+#
+# Rungs: n4d Spot -> n4 Spot -> n4 on-demand. Small machine types keep the
+# "islands" numerous and the bill small.
+---
+# Capacity Climber. climber.lock patches priorities[0] to
+#   reservations: {affinity: Specific, specific: [{name: arcade-locked}]}
+# (a reservation that does not exist) so rung #1 becomes unobtainable; unlock
+# restores `spot: true` and active migration moves pods back up.
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: arcade-climber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: climber
+spec:
+  description: "Capacity Climber: n4d Spot -> n4 Spot -> n4 on-demand"
+  priorities:
+    - machineType: n4d-standard-2
+      spot: true
+    - machineType: n4-standard-2
+      spot: true
+    - machineType: n4-standard-2
+      spot: false
+  nodePoolAutoCreation:
+    enabled: true
+  activeMigration:
+    optimizeRulePriority: true
+  autoscalingPolicy:
+    consolidationDelayMinutes: 1
+    consolidationThreshold: 70
+  whenUnsatisfiable: DoNotScaleUp
+---
+# Spot On. Same rungs; the WorkloadClass plugin injects Spot/On-Demand
+# affinity per pod to realise the ratio. The stockout lever is documented in
+# docs/cabinets/spot-on.md ("Stockout lever").
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: arcade-spot
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: spot
+spec:
+  description: "Spot On: n4d Spot -> n4 Spot -> n4 on-demand"
+  priorities:
+    - machineType: n4d-standard-2
+      spot: true
+    - machineType: n4-standard-2
+      spot: true
+    - machineType: n4-standard-2
+      spot: false
+  nodePoolAutoCreation:
+    enabled: true
+  activeMigration:
+    optimizeRulePriority: true
+  autoscalingPolicy:
+    consolidationDelayMinutes: 1
+    consolidationThreshold: 70
+  whenUnsatisfiable: DoNotScaleUp
+---
+# Shock Absorber. On-demand only (buffers must be reliable) and fenced with a
+# dedicated taint (key may not contain "gke.io"; GKE Warden rejects it) so nothing but the burst worker (and the CapacityBuffer's
+# PodTemplate, which must carry the same toleration) can use the headroom.
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: arcade-absorber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: absorber
+spec:
+  description: "Shock Absorber: n4 on-demand, tainted arcade.demo/buffer=true:NoSchedule"
+  priorities:
+    - machineType: n4-standard-2
+      spot: false
+  nodePoolAutoCreation:
+    enabled: true
+  nodePoolConfig:
+    taints:
+      - key: arcade.demo/buffer
+        value: "true"
+        effect: NoSchedule
+  activeMigration:
+    optimizeRulePriority: false
+  autoscalingPolicy:
+    consolidationDelayMinutes: 1
+    consolidationThreshold: 70
+  whenUnsatisfiable: DoNotScaleUp

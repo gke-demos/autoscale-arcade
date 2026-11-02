@@ -1,0 +1,255 @@
+# RBAC for arcade-server (docs/design.md §5 "RBAC").
+#
+# - ClusterRole arcade-server-reader: read-only on everything the server
+#   watches (cluster-wide, because nodes/ComputeClasses are cluster-scoped and
+#   pods on auto-created nodes live in every arcade namespace).
+# - ClusterRole arcade-server-cluster-writer: the few cluster-scoped writes:
+#   cordon (nodes patch), the three arcade ComputeClasses, CapacityQuotas
+#   (the Spot On stockout lever).
+# - ClusterRole arcade-server-cabinet-writer: namespaced writes, bound with a
+#   RoleBinding in each arcade-<cabinet> namespace only (never cluster-wide).
+# - Role arcade-server-leaderboard: the leaderboard ConfigMap in arcade-system.
+# - Role in kube-system: read the cluster-autoscaler-status ConfigMap.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: arcade-server
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: arcade-server-reader
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+rules:
+  - apiGroups: [""]
+    resources: [nodes, pods, pods/status, events, namespaces, podtemplates, services, endpoints]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling.k8s.io]
+    resources: [verticalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling.gke.io]
+    resources: [autoscalingmetrics]
+    verbs: [get, list, watch]
+  - apiGroups: [cloud.google.com]
+    resources: [computeclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling.x-k8s.io]
+    resources: [capacitybuffers, capacityquotas]
+    verbs: [get, list, watch]
+  - apiGroups: [workloads.gke.io]
+    resources: [workloadclasses, workloadclassguardrails, gkespotplacementpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [podmigration.gke.io]
+    resources: [podmigrationjobs, podmigrations]
+    verbs: [get, list, watch]
+  - apiGroups: [podsnapshot.gke.io]
+    resources: [podsnapshots, podsnapshotpolicies, podsnapshotmanualtriggers]
+    verbs: [get, list, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: arcade-server-reader
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: arcade-server-reader
+subjects:
+  - kind: ServiceAccount
+    name: arcade-server
+    namespace: arcade-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: arcade-server-cluster-writer
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+rules:
+  # cordon / uncordon (Spot On stockout drains Spot nodes)
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [patch, update]
+  # climber.lock / spot.stockout patch the arcade ComputeClasses only
+  - apiGroups: [cloud.google.com]
+    resources: [computeclasses]
+    resourceNames: [arcade-climber, arcade-spot, arcade-absorber]
+    verbs: [patch, update]
+  # Spot On stockout lever (see docs/cabinets/spot-on.md "Stockout lever")
+  - apiGroups: [autoscaling.x-k8s.io]
+    resources: [capacityquotas]
+    verbs: [create, delete, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: arcade-server-cluster-writer
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: arcade-server-cluster-writer
+subjects:
+  - kind: ServiceAccount
+    name: arcade-server
+    namespace: arcade-system
+---
+# Namespaced writes. Bound per arcade-<cabinet> namespace below; NOT a
+# ClusterRoleBinding, so the server cannot touch kube-system or the addons.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: arcade-server-cabinet-writer
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, deployments/scale, statefulsets, statefulsets/scale]
+    verbs: [patch, update]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [patch, update]
+  - apiGroups: [workloads.gke.io]
+    resources: [workloadclasses]
+    verbs: [patch, update]
+  - apiGroups: [autoscaling.x-k8s.io]
+    resources: [capacitybuffers]
+    verbs: [patch, update]
+  # teleporter.migrate -> Eviction (turned into a PodMigrationJob by the webhook);
+  # spot.stockout drain -> evict/delete pods on Spot nodes.
+  - apiGroups: [""]
+    resources: [pods/eviction]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+  - apiGroups: [podmigration.gke.io]
+    resources: [podmigrationjobs]
+    verbs: [delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arcade-server-cabinet-writer
+  namespace: arcade-climber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: arcade-server-cabinet-writer }
+subjects: [{ kind: ServiceAccount, name: arcade-server, namespace: arcade-system }]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arcade-server-cabinet-writer
+  namespace: arcade-spot
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: arcade-server-cabinet-writer }
+subjects: [{ kind: ServiceAccount, name: arcade-server, namespace: arcade-system }]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arcade-server-cabinet-writer
+  namespace: arcade-teleporter
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: arcade-server-cabinet-writer }
+subjects: [{ kind: ServiceAccount, name: arcade-server, namespace: arcade-system }]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arcade-server-cabinet-writer
+  namespace: arcade-absorber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: arcade-server-cabinet-writer }
+subjects: [{ kind: ServiceAccount, name: arcade-server, namespace: arcade-system }]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arcade-server-cabinet-writer
+  namespace: arcade-lights
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: arcade-server-cabinet-writer }
+subjects: [{ kind: ServiceAccount, name: arcade-server, namespace: arcade-system }]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arcade-server-cabinet-writer
+  namespace: arcade-nitro
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: arcade-server-cabinet-writer }
+subjects: [{ kind: ServiceAccount, name: arcade-server, namespace: arcade-system }]
+---
+# Leaderboard ConfigMap (GET|POST /api/leaderboard).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arcade-server-leaderboard
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch, create]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [arcade-leaderboard]
+    verbs: [update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arcade-server-leaderboard
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: arcade-server-leaderboard }
+subjects: [{ kind: ServiceAccount, name: arcade-server, namespace: arcade-system }]
+---
+# kube-system/cluster-autoscaler-status (WorldState.cluster.autoscaler).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arcade-server-ca-status
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arcade-server-ca-status
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: arcade-server-ca-status }
+subjects: [{ kind: ServiceAccount, name: arcade-server, namespace: arcade-system }]

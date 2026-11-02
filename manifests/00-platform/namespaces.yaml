@@ -1,0 +1,75 @@
+# Namespaces for the arcade. arcade-system hosts the server and the Gateway;
+# each cabinet gets its own namespace (docs/contracts.md).
+#
+# Workload Identity: the cluster uses the GKE_METADATA workload pool, so any
+# KSA can be granted IAM directly as
+#   principal://iam.googleapis.com/projects/<NUM>/locations/global/workloadIdentityPools/<PROJECT>.svc.id.goog/subject/ns/<NS>/sa/<KSA>
+# The snapshot bucket is granted to the whole arcade-teleporter namespace
+# (principalSet .../namespace/arcade-teleporter) by hack/cluster.sh storage.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arcade-climber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: climber
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arcade-spot
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: spot
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arcade-teleporter
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: teleporter
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arcade-absorber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: absorber
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arcade-lights
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: lights
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arcade-nitro
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: nitro
+---
+# KSA for the pet (Pod Teleporter). Pod Snapshots write to GCS with the pod's
+# KSA identity; bucket IAM is bound to the whole namespace, so any KSA works,
+# but the pet uses this one so the binding is explicit.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pet
+  namespace: arcade-teleporter
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: teleporter

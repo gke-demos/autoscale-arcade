@@ -1,0 +1,57 @@
+# Backend policies for Service/arcade-server.
+#
+# IAP: enabled without clientID/oauth2ClientSecret, which makes the Gateway
+# controller use the project's Google-managed OAuth client (needs the IAP
+# OAuth brand to exist; "GKE Ninja" does in gke-demos-345619). Presenters are
+# granted roles/iap.httpsResourceAccessor with hack/iap.sh. If this GKE
+# version refused the Google-managed client, create an OAuth client and add
+#   iap: {enabled: true, clientID: <id>, oauth2ClientSecret: {name: arcade-iap-oauth}}
+# with a Secret arcade-iap-oauth containing key `key`.
+#
+# timeoutSec 3600 keeps the /ws WebSocket open for an hour (the kiosk reconnects anyway).
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: arcade-server
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: system
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: arcade-server
+  default:
+    timeoutSec: 3600
+    connectionDraining:
+      drainingTimeoutSec: 10
+    logging:
+      enabled: true
+      sampleRate: 1000000
+    iap:
+      enabled: true
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: arcade-server
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: system
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: arcade-server
+  default:
+    checkIntervalSec: 10
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 8080
+        requestPath: /healthz

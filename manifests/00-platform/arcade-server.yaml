@@ -1,0 +1,106 @@
+# arcade-server: the Go server (WorldState over WebSocket, actions, scenario
+# runner, embedded UI). Image is the single arcade image (docs/contracts.md).
+#
+# Secret arcade-server (not committed; created by hack/iap.sh or by hand):
+#   IAP_AUDIENCE      /projects/<NUM>/global/backendServices/<BACKEND_SERVICE_ID>
+#   ARCADE_DEV_TOKEN  bearer token for port-forward / scenario runs without IAP
+# Both keys are optional so the server starts before the Gateway exists.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arcade-server
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    app.kubernetes.io/name: arcade-server
+    arcade.gke.io/cabinet: system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # one coin queue / scenario runner at a time
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: arcade-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: autoscale-arcade
+        app.kubernetes.io/name: arcade-server
+        arcade.gke.io/cabinet: system
+        arcade.gke.io/workload: arcade-server
+        app: arcade-server            # ClusterPodMonitoring selector (Lights Out metric)
+    spec:
+      serviceAccountName: arcade-server
+      # Stay on the system pool: never on gVisor, Spot or auto-created nodes.
+      nodeSelector:
+        cloud.google.com/gke-nodepool: default-pool
+      containers:
+        - name: server
+          image: us-central1-docker.pkg.dev/gke-demos-345619/autoscale-arcade/arcade:latest
+          imagePullPolicy: Always
+          args: ["server", "--addr=:8080"]
+          ports:
+            - name: http              # UI, /ws, /api, /healthz and /metrics (scrape port "http")
+              containerPort: 8080
+          env:
+            - name: PROJECT_ID
+              value: gke-demos-345619
+            - name: REGION
+              value: us-central1
+            - name: CLUSTER
+              value: autoscale-arcade
+            - name: IAP_AUDIENCE
+              valueFrom:
+                secretKeyRef: { name: arcade-server, key: IAP_AUDIENCE, optional: true }
+            - name: ARCADE_DEV_TOKEN
+              valueFrom:
+                secretKeyRef: { name: arcade-server, key: ARCADE_DEV_TOKEN, optional: true }
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: arcade-server
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    app.kubernetes.io/name: arcade-server
+    arcade.gke.io/cabinet: system
+  annotations:
+    # Gateway uses NEGs; the policies in 90-gateway attach to this Service.
+    cloud.google.com/neg: '{"exposed_ports": {"8080": {}}}'
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: arcade-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Leaderboard storage (GET|POST /api/leaderboard). Created empty so the
+# server only ever needs update/patch on it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: arcade-leaderboard
+  namespace: arcade-system
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: system
+data:
+  leaderboard.json: "[]"
