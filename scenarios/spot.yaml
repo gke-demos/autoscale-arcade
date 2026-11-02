@@ -1,18 +1,23 @@
-# Spot On — Workload Class Spot placement with an On-Demand / Spot ratio.
-# Needs the stockout lever (docs/cabinets/spot-on.md). Full run ≈ 6–8 min.
+# Spot On — Workload Class Spot placement with an On-Demand / Spot ratio
+# (two plain node pools: spot-spot = n4d Spot, spot-od = n4 on-demand).
+# Needs the stockout lever (docs/cabinets/spot-on.md). Full run ≈ 7–9 min.
 name: spot
 cabinet: spot
 title: "Spot On"
 steps:
-  - caption: "Spot On. Six checkout pods. The Workload Class says: 80 percent on Spot, fall back to On-Demand if Spot runs out."
+  - caption: "Spot On. Ten checkout pods. The Workload Class says: 80 percent on Spot, fall back to On-Demand if Spot runs out."
     wait: 5s
   - caption: "{{ .counts.spot }} on Spot, {{ .counts.onDemand }} On-Demand. The webhook placed each pod to hit the ratio. Cost now: ${{ printf \"%.2f\" .costPerHour.current }} an hour."
     wait: 6s
-  - caption: "Dialing the ratio to 100 percent Spot. Watch the On-Demand pods move over."
-    action: { name: spot.ratio, spotRatio: 100 }
-    waitFor: { path: "counts.spot", gte: 6, timeout: 240s }
+  - caption: "Dial it down to 50 percent. Half the pods move to On-Demand — a rolling replacement, not a redeploy."
+    action: { name: spot.ratio, spotRatio: 50 }
+    waitFor: { path: "counts.onDemand", gte: 5, timeout: 240s }
     onTimeout: continue
-  - caption: "All six on Spot. Now a stockout: Spot capacity disappears."
+  - caption: "{{ .counts.spot }} Spot, {{ .counts.onDemand }} On-Demand. Now all the way to 100 percent Spot."
+    action: { name: spot.ratio, spotRatio: 100 }
+    waitFor: { path: "counts.spot", gte: 10, timeout: 240s }
+    onTimeout: continue
+  - caption: "All ten on Spot. Now a stockout: Spot capacity disappears."
     action: { name: spot.stockout, enabled: true }
     waitFor: { path: "inFallback", truthy: true, timeout: 300s }
     onTimeout: continue

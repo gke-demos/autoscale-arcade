@@ -1,5 +1,12 @@
-# Infrastructure profile: Spot pods go to ComputeClass/arcade-spot
-# (n4d spot -> n4 spot -> n4 on-demand, node pool auto-creation).
+# Infrastructure profile for the Spot On cabinet. Deliberately NO
+# customComputeClass: the workload-class webhook expresses the on-demand share
+# as a required cloud.google.com/gke-spot node-affinity term, and GKE Warden
+# rejects that key on any pod that also selects a ComputeClass
+# ("ccc-node-affinity-selector-limitation", verified 2026-11-02). The cabinet
+# therefore runs on two plain node pools created by hack/cluster.sh
+# (spot-spot: n4d-standard-2 Spot, spot-od: n4-standard-2 on-demand; both
+# labelled arcade.demo/cabinet=spot, tainted arcade.demo/spot-cabinet) that
+# Deployment/checkout selects itself.
 # Active reversion with no minimum dwell time so the "capacity returns" beat
 # of the demo is visible within seconds.
 apiVersion: workloads.gke.io/v1
@@ -10,7 +17,6 @@ metadata:
     app.kubernetes.io/part-of: autoscale-arcade
     arcade.gke.io/cabinet: spot
 spec:
-  customComputeClass: arcade-spot
   reversion:
     action: Active
     minDurationOnFallback: 0s

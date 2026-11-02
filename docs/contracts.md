@@ -149,7 +149,7 @@ Other endpoints: `GET /api/state` (latest `WorldState`), `GET /api/scenarios` (n
 Mutating endpoints require either a valid IAP JWT (`x-goog-iap-jwt-assertion`, audience from `IAP_AUDIENCE`) or, when `ARCADE_DEV_TOKEN` is set, `Authorization: Bearer <token>`; rate limit 5 req/s per client.
 
 ### Start state (what `reset` restores)
-`climber`: 0 replicas, unlocked · `spot`: 6 replicas, ratio 80, stockout off · `teleporter`: `pet-0` running, no nodeSelector pin · `absorber`: preset `none`, burst-worker 0 · `lights`: queue 0 (HPA will scale to 0) · `nitro`: both deployments at 1 replica, no race.
+`climber`: 0 replicas, unlocked · `spot`: 10 replicas, ratio 80, stockout off · `teleporter`: `pet-0` running, no nodeSelector pin · `absorber`: preset `none`, burst-worker 0 · `lights`: queue 0 (HPA will scale to 0) · `nitro`: both deployments at 1 replica, no race.
 
 ## Scenario files — `scenarios/<name>.yaml`
 

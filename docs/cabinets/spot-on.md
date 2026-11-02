@@ -7,21 +7,21 @@
 
 | Object | Where | Purpose |
 | :--- | :--- | :--- |
-| `ComputeClass/arcade-spot` (cluster) | `manifests/00-platform` | n4d Spot → n4 Spot → n4 On-Demand, node pool auto-creation |
+| Node pools `spot-spot` (n4d-standard-2 Spot, autoscaling 0–6) and `spot-od` (n4-standard-2 on-demand, autoscaling 0–6), us-central1-b | `hack/cluster.sh` phase `spotpools` | Labels `arcade.demo/cabinet=spot`, taint `arcade.demo/spot-cabinet=true:NoSchedule`. **No ComputeClass** for this cabinet: GKE Warden rejects the required `cloud.google.com/gke-spot` node affinity the webhook emits for the on-demand share whenever the pod also selects a ComputeClass (`[denied by ccc-node-affinity-selector-limitation]`), so the ratio dial is unrealisable on a CCC-backed profile. |
 | `WorkloadClassGuardrail/arcade` (cluster) | `manifests/02-spot/guardrail.yaml` | Platform persona: `pluginConstraints.placement[gke-spot-placement]` → `enforcementMode: Allowed`, `minSpotRatio: 20%`, `fallback.allowFallbackToOnDemand: true`, `fallback.maxFallbackRatio: 100%`, `reversion.requiredReversionAction: Active`; mandatory `constraints.disruption.maxNonDisruptionDurationDays: 30` |
-| `GKESpotPlacementPolicy/arcade-spot` (cluster) | `spot-placement-policy.yaml` | `customComputeClass: arcade-spot`, `reversion: {action: Active, minDurationOnFallback: 0s}` |
+| `GKESpotPlacementPolicy/arcade-spot` (cluster) | `spot-placement-policy.yaml` | `reversion: {action: Active, minDurationOnFallback: 0s}`; deliberately no `customComputeClass` |
 | `WorkloadClass/checkout` | `workloadclass.yaml` | `podSelector app=checkout`, `capacityStrategy: {type: Spot, spotRatio: "80%", action: FallbackToOnDemand}`, `infrastructureProfileRef → GKESpotPlacementPolicy/arcade-spot`, `disruptionPolicy.maxNonDisruptionDurationDays: 30` (guardrail requires 1–30) |
-| `Deployment/checkout` | `deployment.yaml` | 6 pause pods, 100m, `nodeSelector cloud.google.com/compute-class: arcade-spot` |
+| `Deployment/checkout` | `deployment.yaml` | 10 pause pods, 100m, `nodeSelector arcade.demo/cabinet: spot`, toleration `arcade.demo/spot-cabinet` |
 
-Start state (`reset`): 6 replicas, ratio 80, stockout off.
+Start state (`reset`): 10 replicas (80 % → 8 Spot / 2 on-demand), ratio 80, stockout off.
 
-Why `maxFallbackRatio: 100%` and not the 50 % from the design: on a ComputeClass-backed profile the webhook's "budget exhausted" behaviour emits a strict `nodeSelector cloud.google.com/gke-spot=true`, and GKE Warden rejects any pod that combines a compute-class selector with the `gke-spot` system label (`FailedCreate … warden-validating … violates one or more constraints`). With 50 % a stockout left checkout at 4/6 with `FallbackBudgetExhausted` events (live run 13:08–13:10 UTC). 100 % lets all six fall back and Active reversion bring all six home — the cleaner beat on stage. If you want to show the budget cap, lower it in `guardrail.yaml` and caption the Pending pods honestly.
+Why `maxFallbackRatio: 100%` and not the 50 % from the design: with 50 % a stockout left checkout at 4/6 with `FallbackBudgetExhausted` events (live run 13:08–13:10 UTC; at the time the CCC profile also made the "budget exhausted" strict-Spot selector unadmittable). 100 % lets every pod fall back and Active reversion bring every pod home — the cleaner beat on stage. To show the budget cap instead, lower it in `guardrail.yaml` and caption the Pending pods honestly.
 
-What the webhook injects on each pod (verified): spot-targeted pods get `nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution` weight 100 `cloud.google.com/gke-spot In [true]` (preferred, because the action is `FallbackToOnDemand`) plus toleration `cloud.google.com/gke-spot=true:NoSchedule`; on-demand-targeted pods get the complementary affinity. The compute-class nodeSelector/toleration must come from the Deployment template — GKE injects the compute-class toleration only for selectors present at admission, before the WC webhook runs.
+What the webhook injects on each pod (verified): spot-targeted pods get `nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution` weight 100 `cloud.google.com/gke-spot In [true]` (preferred, because the action is `FallbackToOnDemand`) plus toleration `cloud.google.com/gke-spot=true:NoSchedule`; on-demand-targeted pods get a *required* `gke-spot` term (the one Warden refuses next to a ComputeClass selector). Because the Spot pods only *prefer* Spot, the `spot-od` pool must not have idle room when Spot capacity exists, otherwise the scheduler may place a Spot-share pod on-demand; keep `spot-od` autoscaled from 0.
 
 ## What to click / say
 
-1. **Look** — *"Six checkout pods. The workload owner wrote one line: 80 % Spot, fall back to On-Demand. The webhook placed each pod to hit that mix."* HUD: `kubectl get workloadclass` with `VALIDATED True`, pods coloured spot / on-demand, $/h meter.
+1. **Look** — *"Ten checkout pods. The workload owner wrote one line: 80 % Spot, fall back to On-Demand. The webhook placed each pod to hit that mix."* HUD: `kubectl get workloadclass` with `VALIDATED True`, pods coloured spot / on-demand, $/h meter.
 2. **Ratio dial** (0–100) — patches `spec.capacityStrategy.spotRatio`. *"Change the number, the pods re-balance — a rolling replacement, not a redeploy."* Guardrail refuses < 20 %.
 3. **Preempt a Spot node** — `compute.instances.simulateMaintenanceEvent` on a Spot VM: a real preemption. Pods reschedule onto other Spot capacity (or fall back).
 4. **Stockout** — engage the lever (section below); Spot becomes unobtainable → pods fall back On-Demand, `InFallback=True`. *"Nobody paged. Checkout kept running at On-Demand prices."*
@@ -33,7 +33,7 @@ What the webhook injects on each pod (verified): spot-targeted pods get `nodeAff
 kubectl get workloadclass -n arcade-spot -w            # MAINTENANCE CAPACITY SPOTRATIO PROFILE VALIDATED
 kubectl get workloadclass checkout -n arcade-spot -o jsonpath='{.status.conditions}' | jq
 kubectl get pods -n arcade-spot -o wide -L cloud.google.com/gke-spot
-kubectl get nodes -L cloud.google.com/compute-class,cloud.google.com/gke-spot,cloud.google.com/machine-family
+kubectl get nodes -l arcade.demo/cabinet=spot -L cloud.google.com/gke-nodepool,cloud.google.com/gke-spot,cloud.google.com/machine-family
 kubectl get pod -n arcade-spot -l app=checkout -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.affinity.nodeAffinity}{"\n"}{end}'
 kubectl get events -n arcade-spot --sort-by=.lastTimestamp | grep -i -E 'fallback|revers|preempt'
 kubectl -n workload-class-system logs deploy/workload-class-controller-manager -f
@@ -88,7 +88,8 @@ Gotchas: `limits.resources.nodes` counts *existing* nodes too, so with the quota
 | Symptom | Fix |
 | :--- | :--- |
 | `VALIDATED False`, condition `ValidationFailed: maxNonDisruptionDurationDays must be between 1 and 30` | The WorkloadClass needs `disruptionPolicy.maxNonDisruptionDurationDays` (the guardrail makes it mandatory). Re-apply `manifests/02-spot`. |
-| Pods Pending with `untolerated taint` on arcade-spot nodes | Template lost its `nodeSelector cloud.google.com/compute-class: arcade-spot`. Re-apply and `kubectl rollout restart deploy/checkout -n arcade-spot`. |
+| Pods Pending with `untolerated taint` / `didn't match node selector` | Template needs `nodeSelector arcade.demo/cabinet: spot` + toleration `arcade.demo/spot-cabinet`; the pools must exist (`gcloud container node-pools list --cluster autoscale-arcade --location us-central1`). Re-apply and `kubectl rollout restart deploy/checkout -n arcade-spot`. |
+| ReplicaSet `FailedCreate … warden-validating … ccc-node-affinity-selector-limitation … gke-spot` | A ComputeClass selector crept back into the pod (template or `customComputeClass` on the placement policy). Remove it; this cabinet must not use a ComputeClass. |
 | Pods on the default pool with no injected affinity | Created before the WorkloadClass validated or webhook down. `kubectl rollout restart deploy/checkout -n arcade-spot`; check `kubectl get pods -n workload-class-system`. |
 | Ratio dial does nothing | Guardrail rejected it (below `minSpotRatio`) — see the WorkloadClass conditions; or no Spot capacity obtainable (check CA events). |
-| Cabinet reset | `POST /api/actions/reset {"cabinet":"spot"}`: ratio 80, stockout off, 6 replicas. Manual: `kubectl apply -k manifests/02-spot` then disengage the stockout lever. |
+| Cabinet reset | `POST /api/actions/reset {"cabinet":"spot"}`: ratio 80, stockout off, 10 replicas. Manual: `kubectl apply -k manifests/02-spot` then disengage the stockout lever. |
