@@ -72,7 +72,7 @@ lint: ## gofmt check
 	@test -z "$$(gofmt -l cmd internal)" || { gofmt -l cmd internal; echo 'run gofmt -w'; exit 1; }
 
 web-dev: ## Vite dev server proxied to a port-forwarded arcade-server (:$(PF_PORT))
-	@$(call with_portforward, cd web && VITE_ARCADE_URL=http://localhost:$(PF_PORT) npm run dev)
+	@$(call with_portforward, cd web && VITE_API_BASE=http://localhost:$(PF_PORT) npm run dev)
 
 image: ## build + push $(IMAGE):$(TAG) with Cloud Build (no local docker)
 	gcloud builds submit --project $(PROJECT_ID) --config cloudbuild.yaml \
