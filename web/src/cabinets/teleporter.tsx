@@ -37,10 +37,14 @@ function Scene({ world }: CabinetProps) {
 
   const canDrag = useCallback((p: Pod) => p.workload === 'pet' && !migrating && p.ready, [migrating]);
   const isTarget = useCallback((n: Node, p: Pod) => gvisor.has(n.name) && n.name !== p.node && n.ready && !n.unschedulable && !n.deleting, [t.gvisorNodes]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lastDrop = useRef<string | undefined>(undefined);
   const { onPodPointerDown } = usePodDrag(layout, {
     canDrag,
     isTarget,
-    onDrop: (_pod, node) => void act('teleporter.migrate', { toNode: node.name }, { label: `Teleport → ${shortNodeName(node.name)}` }),
+    onDrop: (_pod, node) => {
+      lastDrop.current = node.name;
+      void act('teleporter.migrate', { toNode: node.name }, { label: `Teleport → ${shortNodeName(node.name)}` });
+    },
   });
 
   const nodeHighlight = useCallback(
@@ -57,18 +61,29 @@ function Scene({ world }: CabinetProps) {
     [drag, migrating, job, pet, t.gvisorNodes], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  // beam endpoints
+  // beam endpoints: snapshot goes up to the bucket ("cloud" point above the origin), restore comes down onto the target
   const from = job?.originNode ? layout.nodes.get(job.originNode)?.pos : undefined;
-  const toName = pet?.node && pet.node !== job?.originNode ? pet.node : undefined;
+  const toName = pet?.node && pet.node !== job?.originNode ? pet.node : lastDrop.current;
+  useEffect(() => {
+    if (!migrating) lastDrop.current = undefined;
+  }, [migrating]);
   const to = toName ? layout.nodes.get(toName)?.pos : undefined;
   const beamFrom = useMemo<[number, number, number] | undefined>(() => (from ? [from[0], SLAB.h + 0.4, from[2]] : undefined), [from]);
+  const cloud = useMemo<[number, number, number] | undefined>(() => (from ? [from[0] + (to ? (to[0] - from[0]) / 2 : 0), SLAB.h + 4.2, from[2] + (to ? (to[2] - from[2]) / 2 : 0)] : undefined), [from, to]);
   const beamTo = useMemo<[number, number, number] | undefined>(() => (to ? [to[0], SLAB.h + 0.4, to[2]] : undefined), [to]);
+  const restoring = job?.phase === 'Restoring';
 
   return (
     <>
       <ClusterScene layout={layout} draggable={canDrag} onPodPointerDown={onPodPointerDown} nodeHighlight={nodeHighlight} hiddenPod={drag?.podUid} />
       {drag && <DragGhost />}
-      {beamFrom && beamTo && <Beam from={beamFrom} to={beamTo} active={migrating} color={job?.phase === 'Restoring' ? '#67e8f9' : ACCENT} />}
+      {beamFrom && cloud && <Beam from={beamFrom} to={cloud} active={migrating && !restoring} color={ACCENT} />}
+      {cloud && beamTo && <Beam from={cloud} to={beamTo} active={migrating && restoring} color="#67e8f9" />}
+      {cloud && migrating && (
+        <Html position={[cloud[0], cloud[1] + 0.6, cloud[2]]} center zIndexRange={[30, 0]} style={{ pointerEvents: 'none' }}>
+          <div className="whitespace-nowrap rounded-md bg-black/60 px-2 py-0.5 font-mono text-[0.65rem] text-violet-200">☁ PodSnapshot {job?.snapshot ? `· ${job.snapshot}` : '· gs://…/snapshots'}</div>
+        </Html>
+      )}
       {beamFrom && migrating && (
         <Html position={[beamFrom[0], beamFrom[1] + 2.4, beamFrom[2]]} center zIndexRange={[30, 0]} style={{ pointerEvents: 'none' }}>
           <PhaseChip phase={job!.phase} />
@@ -147,13 +162,13 @@ function Controls({ world }: CabinetProps) {
   }, [pet]);
   const frozenMs = migrating || !live ? now - lastTickAt.current : 0;
   const setPrompt = useArcade((s) => s.setLeaderboardPrompt);
-  const lastLM = useRef<string | undefined>(undefined);
+  const lastLM = useRef<{ at?: string; init: boolean }>({ init: false });
   useEffect(() => {
     const lm = t.lastMigration;
-    if (lm && lastLM.current && lm.at !== lastLM.current && (lm.restored === 'verified' || lm.restored === 'inferred')) {
+    if (lastLM.current.init && lm && lm.at !== lastLM.current.at && (lm.restored === 'verified' || lm.restored === 'inferred')) {
       setPrompt({ cabinet: 'teleporter', score: lm.downtimeMs, unit: 'ms', label: `Teleported with ${lm.downtimeMs} ms of downtime` });
     }
-    lastLM.current = lm?.at;
+    lastLM.current = { at: lm?.at, init: true };
   }, [t.lastMigration, setPrompt]);
 
   return (

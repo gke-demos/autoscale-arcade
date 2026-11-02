@@ -26,6 +26,8 @@ export interface SceneProps {
   selectedNode?: string;
   showLabels?: boolean;
   dim?: boolean;
+  /** Text shown on the empty stage when the cabinet owns no nodes. */
+  emptyHint?: string;
 }
 
 const tmpColor = new THREE.Color();
@@ -60,7 +62,7 @@ export function Island({ island, showLabels = true }: { island: IslandLayout; sh
   return (
     <group position={[cx, 0, cz]}>
       <RoundedBox args={[island.w, 0.3, island.d]} radius={0.15} smoothness={3} position={[0, -0.45, 0]} receiveShadow>
-        <meshStandardMaterial color="#121a30" roughness={0.9} metalness={0.1} emissive={anyCreating ? CREATING_COLOR : '#0b1020'} emissiveIntensity={anyCreating ? 0.15 : 0.6} />
+        <meshStandardMaterial color="#121a30" roughness={0.9} metalness={0.1} emissive={anyCreating ? CREATING_COLOR : '#0b1020'} emissiveIntensity={anyCreating ? 0.05 : 0.6} />
       </RoundedBox>
       {/* neon edge */}
       <mesh position={[0, -0.3, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -121,9 +123,9 @@ export function NodeSlab({
       m.emissiveIntensity = 0.08;
       m.opacity = 0.35;
     } else {
-      tmpColor.set(highlight === 'target' ? '#ffffff' : highlight === 'valid' ? '#a78bfa' : highlight === 'origin' ? '#facc15' : base);
+      tmpColor.set(highlight === 'target' ? '#e9d5ff' : highlight === 'valid' ? '#a78bfa' : highlight === 'origin' ? '#facc15' : base);
       m.emissive.lerp(tmpColor, 0.15);
-      const target = highlight === 'target' ? 1.2 : highlight === 'valid' ? 0.7 + 0.25 * Math.sin(t * 5) : highlight === 'origin' ? 0.6 : selected ? 0.7 : 0.4;
+      const target = highlight === 'target' ? 0.75 : highlight === 'valid' ? 0.4 + 0.15 * Math.sin(t * 5) : highlight === 'origin' ? 0.45 : selected ? 0.7 : 0.4;
       m.emissiveIntensity += (target - m.emissiveIntensity) * 0.2;
       m.opacity += (0.9 - m.opacity) * 0.1;
     }
@@ -402,9 +404,10 @@ export function Beam({ from, to, active, color = BEAM_COLOR, count = 140, revers
 // ---- Whole cluster view ---------------------------------------------------
 
 export function ClusterScene(props: SceneProps) {
-  const { layout, nodeHighlight, onNodeClick, selectedNode, showLabels = true } = props;
+  const { layout, nodeHighlight, onNodeClick, selectedNode, showLabels = true, emptyHint } = props;
   return (
     <group>
+      {layout.islands.length === 0 && <EmptyStage hint={emptyHint} />}
       {layout.islands.map((isl) => (
         <group key={isl.key}>
           <Island island={isl} showLabels={showLabels} />
@@ -429,4 +432,26 @@ function summarisePending(pods: Pod[]) {
   const counts = new Map<string, number>();
   pods.forEach((p) => counts.set(p.pendingReason ?? 'Pending', (counts.get(p.pendingReason ?? 'Pending') ?? 0) + 1));
   return [...counts.entries()].map(([k, v]) => `${k} ×${v}`).join(' · ');
+}
+
+/** Shown when a cabinet currently owns no nodes at all (e.g. Capacity Climber at 0 replicas). */
+function EmptyStage({ hint }: { hint?: string }) {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    if (ref.current) (ref.current.material as THREE.MeshBasicMaterial).opacity = 0.25 + 0.1 * Math.sin(clock.elapsedTime * 2);
+  });
+  return (
+    <group>
+      <mesh ref={ref} position={[0, -0.3, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[3.6, 3.75, 64]} />
+        <meshBasicMaterial color="#334155" transparent opacity={0.3} side={THREE.DoubleSide} />
+      </mesh>
+      <Html position={[0, 0.6, 0]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
+        <div className="max-w-[22rem] whitespace-normal text-center font-mono text-[0.8rem] text-slate-400">
+          <div className="text-[1rem] text-slate-300">no nodes yet</div>
+          {hint && <div className="mt-1">{hint}</div>}
+        </div>
+      </Html>
+    </group>
+  );
 }

@@ -94,7 +94,7 @@ function Scene({ world }: CabinetProps) {
   const l = world.cabinets.lights;
   const layout = useCabinetLayout(world, 'lights', { extraNodes: isDefaultPool });
   const dark = l.hpa.scaledToZero;
-  const coinPos: [number, number, number] = [layout.bounds.maxX + 2.0, 0, 0];
+  const coinPos: [number, number, number] = [layout.bounds.minX - 1.6, 0, layout.bounds.maxZ - 1.5];
   return (
     <>
       <ClusterScene layout={layout} dim={dark} />
@@ -264,4 +264,5 @@ export const lights: CabinetModule = {
   hud,
   Status,
   hint: 'Insert coins to wake the workers from zero — the HPA scales 0 → N and back.',
+  frame: (b) => ({ ...b, minX: b.minX - 3.5 }),
 };

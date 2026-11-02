@@ -18,13 +18,13 @@ export function Lobby({ world }: { world: WorldState }) {
   const halfW = Math.max(clusterW / 2, rowW / 2 + 2.5);
   const clusterZ = -(layout.bounds.maxZ + 5);
   const framed = useMemo(
-    () => ({ ...layout, bounds: { minX: -halfW - 5, maxX: halfW + 5, minZ: clusterZ + layout.bounds.minZ - 2, maxZ: 12 } }),
+    () => ({ ...layout, bounds: { minX: -halfW - 2, maxX: halfW + 2, minZ: clusterZ + layout.bounds.minZ, maxZ: 5 } }),
     [layout, halfW, clusterZ],
   );
 
   return (
     <>
-      <CameraRig layout={framed} viewKey="lobby" elevation={0.62} xShift={0.1} />
+      <CameraRig layout={framed} viewKey="lobby" elevation={0.62} visible={[0.01, 0.74]} />
       <group position={[0, 0, clusterZ]}>
         <ClusterScene layout={layout} showLabels={false} />
         <Html position={[0, 0.3, layout.bounds.maxZ + 0.8]} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>

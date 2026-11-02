@@ -264,7 +264,7 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     subtitle: 'Custom Compute Classes',
     feature: 'ComputeClass priorities · node pool auto-creation · active migration',
     namespace: 'arcade-climber',
-    scenario: 'capacity-climber',
+    scenario: 'climber',
     accent: '#f59e0b',
   },
   spot: {
@@ -274,7 +274,7 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     subtitle: 'Workload Class spot ratio',
     feature: 'WorkloadClass capacityStrategy · fallback · active reversion',
     namespace: 'arcade-spot',
-    scenario: 'spot-on',
+    scenario: 'spot',
     accent: '#22d3ee',
   },
   teleporter: {
@@ -284,7 +284,7 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     subtitle: 'Live Pod Migration',
     feature: 'PodMigrationJob · gVisor snapshot / restore',
     namespace: 'arcade-teleporter',
-    scenario: 'pod-teleporter',
+    scenario: 'teleporter',
     accent: '#a78bfa',
   },
   absorber: {
@@ -294,7 +294,7 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     subtitle: 'Capacity Buffers',
     feature: 'CapacityBuffer active / standby headroom',
     namespace: 'arcade-absorber',
-    scenario: 'shock-absorber',
+    scenario: 'absorber',
     accent: '#34d399',
   },
   lights: {
@@ -304,7 +304,7 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     subtitle: 'Scale to zero',
     feature: 'HPA minReplicas: 0 · AutoscalingMetric',
     namespace: 'arcade-lights',
-    scenario: 'lights-out',
+    scenario: 'lights',
     accent: '#fbbf24',
   },
   nitro: {

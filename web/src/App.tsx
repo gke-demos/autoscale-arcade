@@ -74,6 +74,7 @@ function CabinetView({ id, world }: { id: CabinetId; world: WorldState }) {
   const mod = cabinets[id];
   const layout = useCabinetLayout(world, id, { extraNodes: id === 'teleporter' ? (n) => n.gvisor : id === 'nitro' || id === 'lights' ? (n) => n.pool === 'default-pool' : undefined });
   const framed = useMemo(() => (mod.frame ? { ...layout, bounds: mod.frame(layout.bounds) } : layout), [layout, mod]);
+  (window as unknown as { __layout: unknown }).__layout = layout; // dev hook for automated checks
   return (
     <>
       <CameraRig layout={framed} viewKey={id} />
@@ -140,7 +141,9 @@ function useHashRoute() {
   }, [setView]);
   useEffect(() => {
     if (!applied.current) return;
-    const want = view === 'lobby' ? '#/' : `#/${view}`;
+    // read the live value: in the first commit this effect runs with the stale initial view
+    const v = useArcade.getState().view;
+    const want = v === 'lobby' ? '#/' : `#/${v}`;
     if (window.location.hash !== want) window.history.replaceState(null, '', want);
   }, [view]);
 }
@@ -208,8 +211,16 @@ function useAttractMode() {
   useEffect(() => {
     const id = window.setInterval(() => {
       const s = useArcade.getState();
-      if (!s.world || s.world.scenario.running || s.drag || s.leaderboardPrompt) return;
-      if (Date.now() - s.lastInput > idleMs) void s.act('scenario.run', { name: 'attract' }, { quiet: true });
+      if (!s.world || s.world.scenario.running || s.drag) return;
+      if (Date.now() - s.lastInput > idleMs) {
+        // an abandoned score prompt / modal must not keep the kiosk out of attract mode
+        if (s.leaderboardPrompt || s.showLeaderboard || s.showHelp) {
+          s.setLeaderboardPrompt(undefined);
+          s.setShowLeaderboard(false);
+          s.setShowHelp(false);
+        }
+        void s.act('scenario.run', { name: 'attract' }, { quiet: true });
+      }
     }, 5000);
     return () => window.clearInterval(id);
   }, [idleMs]);

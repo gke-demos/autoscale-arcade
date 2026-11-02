@@ -59,7 +59,7 @@ export class MockServer {
 
   // cabinet state
   private climber = { desired: 0, locked: false };
-  private spot = { replicas: 6, ratio: 80, stockout: false };
+  private spot = { replicas: 10, ratio: 80, stockout: false };
   private tele = { jobs: [] as WorldState['cabinets']['teleporter']['jobs'], last: undefined as WorldState['cabinets']['teleporter']['lastMigration'] };
   private absorber = { preset: 'none' as AbsorberPreset, burstDesired: 0, startedAt: undefined as string | undefined, allReadyAt: undefined as string | undefined, perPodReadyMs: [] as number[] };
   private lights = { queue: 0, processed: 0, desired: 0, lastScale: undefined as string | undefined, scaledToZeroSince: Date.now() };
@@ -108,7 +108,7 @@ export class MockServer {
           this.lockClimber(Boolean(body.locked));
           break;
         case 'spot.scale':
-          this.spot.replicas = Number(body.replicas ?? 6);
+          this.spot.replicas = Number(body.replicas ?? 10);
           this.reconcileSpot();
           break;
         case 'spot.ratio':
@@ -268,7 +268,11 @@ export class MockServer {
     this.event('Normal', 'ScaleUp', `nodegroup/${spec.pool}`, `Scale-up: setting group ${spec.pool} size to ${idx}`, cabinet);
     const finalName = `gke-arcade-${spec.pool}-${uid().slice(0, 4)}-${String(idx).padStart(4, '0')}`;
     this.after(readyIn * 0.4, () => {
+      const old = placeholder.name;
       placeholder.name = finalName;
+      this.pods.forEach((p) => {
+        if (p.node === old) p.node = finalName;
+      });
       this.dirty = true;
     });
     this.after(readyIn, () => {
@@ -741,7 +745,7 @@ export class MockServer {
           this.reconcileClimber();
           break;
         case 'spot':
-          this.spot = { replicas: 6, ratio: 80, stockout: false };
+          this.spot = { replicas: 10, ratio: 80, stockout: false };
           this.reconcileSpot();
           break;
         case 'teleporter':
@@ -766,7 +770,7 @@ export class MockServer {
   }
 
   private captions: Record<string, { cabinet: CabinetId; steps: { caption: string; action?: () => void; wait: number }[] }> = {
-    'capacity-climber': {
+    climber: {
       cabinet: 'climber',
       steps: [
         { caption: 'ComputeClass arcade-climber prefers n4d Spot, then n4 Spot, then n4 on-demand.', wait: 4000 },
@@ -776,7 +780,7 @@ export class MockServer {
         { caption: 'Scale to 0 → consolidation removes the auto-created pools.', action: () => this.scaleClimber(0), wait: 12000 },
       ],
     },
-    'spot-on': {
+    spot: {
       cabinet: 'spot',
       steps: [
         { caption: 'WorkloadClass checkout: 80% Spot, fallback to on-demand allowed.', wait: 4000 },
@@ -786,7 +790,7 @@ export class MockServer {
         { caption: 'Back to 80% Spot.', action: () => { this.spot.ratio = 80; this.reconcileSpot(); }, wait: 6000 },
       ],
     },
-    'pod-teleporter': {
+    teleporter: {
       cabinet: 'teleporter',
       steps: [
         { caption: 'All of the pet’s state lives in memory on its node.', wait: 4000 },
@@ -794,7 +798,7 @@ export class MockServer {
         { caption: 'Same ticks, new node — only a moment of downtime.', wait: 6000 },
       ],
     },
-    'shock-absorber': {
+    absorber: {
       cabinet: 'absorber',
       steps: [
         { caption: 'No buffer: a burst of 12 pods has to wait for new nodes.', action: () => this.burst(12), wait: 34000 },
@@ -802,7 +806,7 @@ export class MockServer {
         { caption: 'Fire the same burst: pods snap into the ghosts instantly.', action: () => this.burst(12), wait: 16000 },
       ],
     },
-    'lights-out': {
+    lights: {
       cabinet: 'lights',
       steps: [
         { caption: 'HPA minReplicas: 0 — the lights are out and nothing is running.', wait: 4000 },
@@ -822,7 +826,9 @@ export class MockServer {
 
   private runScenario(name: string) {
     this.stopScenario();
-    const names = name === 'all' || name === 'attract' ? ['capacity-climber', 'spot-on', 'pod-teleporter', 'shock-absorber', 'lights-out', 'nitro'] : [name];
+    // scenarios/<name>.yaml is named after the cabinet id; accept the old long names too.
+    const alias: Record<string, string> = { 'capacity-climber': 'climber', 'spot-on': 'spot', 'pod-teleporter': 'teleporter', 'shock-absorber': 'absorber', 'lights-out': 'lights' };
+    const names = name === 'all' || name === 'attract' ? [...CABINET_IDS] : [alias[name] ?? name];
     const loop = name === 'attract';
     let cancelled = false;
     this.scenarioAbort = () => {
