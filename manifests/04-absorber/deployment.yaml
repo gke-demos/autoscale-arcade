@@ -1,0 +1,56 @@
+# Deployment/burst-worker: 0 at rest; "Fire burst" scales it by +N.
+# Each pod does a CPU warm-up (WARMUP_CPU_SECONDS) and then reports Ready on
+# :8080/ready; the stopwatch measures PodScheduled -> Ready per pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: burst-worker
+  namespace: arcade-absorber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: absorber
+    app: burst-worker
+spec:
+  replicas: 0
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: burst-worker
+  template:
+    metadata:
+      labels:
+        app: burst-worker
+        app.kubernetes.io/part-of: autoscale-arcade
+        arcade.gke.io/cabinet: absorber
+        arcade.gke.io/workload: burst-worker
+    spec:
+      terminationGracePeriodSeconds: 0
+      nodeSelector:
+        cloud.google.com/compute-class: arcade-absorber
+      tolerations:
+        - key: arcade.demo/buffer
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: burst
+          image: us-central1-docker.pkg.dev/gke-demos-345619/autoscale-arcade/arcade:latest
+          args: ["worker", "--mode=burst"]
+          env:
+            - name: WARMUP_CPU_SECONDS
+              value: "10"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 1
+            failureThreshold: 1
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

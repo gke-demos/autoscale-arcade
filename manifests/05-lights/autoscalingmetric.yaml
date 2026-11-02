@@ -1,0 +1,19 @@
+# AutoscalingMetric/coin-queue (autoscaling.gke.io, GKE managed — no adapter
+# to install). Exposes the queue depth to HPAs in this namespace as the
+# External metric autoscaling.gke.io|coin-queue|arcade_queue_depth
+# (see .status.metricStatuses[].hpaName).
+# max() collapses the per-replica series of arcade-server into one scalar;
+# the server keeps a single authoritative queue so the replicas agree.
+apiVersion: autoscaling.gke.io/v1beta1
+kind: AutoscalingMetric
+metadata:
+  name: coin-queue
+  namespace: arcade-lights
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: lights
+spec:
+  metrics:
+    - promql:
+        name: arcade_queue_depth
+        query: max(arcade_queue_depth{namespace="arcade-system"})

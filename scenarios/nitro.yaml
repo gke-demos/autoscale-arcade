@@ -1,0 +1,18 @@
+# Nitro — CPU startup boost (VPA startupBoost). ≈ 2 min.
+name: nitro
+cabinet: nitro
+title: "Nitro"
+steps:
+  - caption: "Nitro. Two identical pods, 250 millicores each, 20 seconds of single-core work before they are ready. One has a VPA startup boost."
+    wait: 6s
+  - caption: "Start the race."
+    action: { name: nitro.race }
+    waitFor: { path: "race.winner", truthy: true, timeout: 180s }
+    onTimeout: continue
+  - caption: "{{ .race.winner }} wins. The boosted pod started with 4 times the CPU and finished its warm-up first."
+    wait: 6s
+  - caption: "Now watch the nitro pod shrink back to 250 millicores in place. No restart. Restarts stay at zero."
+    waitFor: { path: "race.lanes[1].unboostedAt", truthy: true, timeout: 120s }
+    onTimeout: continue
+  - caption: "Unboosted in place. Fast start, normal steady-state cost."
+    wait: 6s

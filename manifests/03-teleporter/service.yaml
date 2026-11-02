@@ -1,0 +1,18 @@
+# Headless governing Service for the StatefulSet (pet-0.pet.arcade-teleporter).
+apiVersion: v1
+kind: Service
+metadata:
+  name: pet
+  namespace: arcade-teleporter
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: teleporter
+    app: pet
+spec:
+  clusterIP: None
+  selector:
+    app: pet
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

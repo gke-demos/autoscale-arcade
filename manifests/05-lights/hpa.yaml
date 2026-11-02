@@ -1,0 +1,42 @@
+# HPA with minReplicas 0 (K8s 1.37 HPAScaleToZero, GKE 1.37 control plane +
+# nodes). The External metric name is derived by GKE from
+# AutoscalingMetric/coin-queue: autoscaling.gke.io|<CR name>|<metric name>
+# (visible in `kubectl describe autoscalingmetric coin-queue` -> hpaName).
+# averageValue 2 => one worker per two queued coins, up to 12 workers.
+# At 0 replicas the 10 % tolerance is bypassed: any queue depth > 0 wakes it.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: coin-worker
+  namespace: arcade-lights
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: lights
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: coin-worker
+  minReplicas: 0
+  maxReplicas: 12
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: autoscaling.gke.io|coin-queue|arcade_queue_depth
+        target:
+          type: AverageValue
+          averageValue: "2"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 12
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15

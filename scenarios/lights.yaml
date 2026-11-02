@@ -1,0 +1,28 @@
+# Lights Out — native scale to zero (HPA minReplicas 0 + AutoscalingMetric). ≈ 4–5 min.
+name: lights
+cabinet: lights
+title: "Lights Out"
+steps:
+  - caption: "Lights Out. The coin workers scale on queue depth, and the minimum is zero. Right now: {{ .hpa.current }} pods."
+    waitFor: { path: "hpa.scaledToZero", truthy: true, timeout: 240s }
+    onTimeout: continue
+  - caption: "Zero pods, zero cost, and the autoscaler is still watching. The HPA reports ScaledToZero: True."
+    wait: 5s
+  - caption: "Insert coin."
+    action: { name: lights.coin, count: 1 }
+    waitFor: { path: "hpa.current", gte: 1, timeout: 180s }
+    onTimeout: continue
+  - caption: "One coin, one worker, woken from nothing. No idle pod was waiting for it."
+    wait: 5s
+  - caption: "Slam! Fifty coins."
+    action: { name: lights.coin, count: 50 }
+    waitFor: { path: "hpa.current", gte: 6, timeout: 180s }
+    onTimeout: continue
+  - caption: "{{ .hpa.current }} workers chewing through {{ .queueDepth }} coins. Target: two coins per pod."
+    waitFor: { path: "queueDepth", lte: 0, timeout: 240s }
+    onTimeout: continue
+  - caption: "Queue empty. Give it a minute and the lights go out again."
+    waitFor: { path: "hpa.scaledToZero", truthy: true, timeout: 300s }
+    onTimeout: continue
+  - caption: "Lights out. Back to zero."
+    wait: 5s

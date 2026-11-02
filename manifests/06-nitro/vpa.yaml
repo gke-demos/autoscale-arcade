@@ -1,0 +1,33 @@
+# VerticalPodAutoscaler/nitro: CPU startup boost for the nitro lane.
+# - startupBoost factor 4: the admission webhook multiplies the container's
+#   CPU request/limit (250m -> 1000m) and records the originals in the pod
+#   annotation vpaCpuStartupBoost/racer.
+# - durationSeconds 0: unboost as soon as the pod is Ready.
+# - updateMode InPlaceOrRecreate: the unboost is an in-place resize
+#   (event InPlaceResizedByVPA, RESTARTS stays 0).
+# - containerPolicies mode Off: no continuous right-sizing of the racer, so
+#   both lanes keep the identical 250m baseline and the race stays fair.
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: nitro
+  namespace: arcade-nitro
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: nitro
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nitro
+  updatePolicy:
+    updateMode: InPlaceOrRecreate
+  startupBoost:
+    cpu:
+      type: Factor
+      factor: 4
+      durationSeconds: 0
+  resourcePolicy:
+    containerPolicies:
+      - containerName: racer
+        mode: "Off"

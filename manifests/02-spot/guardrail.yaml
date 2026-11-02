@@ -1,0 +1,29 @@
+# Cluster-wide guardrail set by the "platform engineer" persona.
+# The gke-spot-placement plugin constraints allow (do not require) Spot
+# placement, floor the ratio at 20 %, allow fallback to On-Demand for at most
+# half of the pods, and require Active reversion so fallback pods move back
+# to Spot when capacity returns. The disruption block is mandatory in the
+# CRD; the arcade sets a permissive value and uses no disruption windows.
+apiVersion: workloads.gke.io/v1
+kind: WorkloadClassGuardrail
+metadata:
+  name: arcade
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: spot
+spec:
+  constraints:
+    disruption:
+      maxNonDisruptionDurationDays: 30
+      emergencyOverride: true
+  pluginConstraints:
+    placement:
+      - name: gke-spot-placement
+        parameters:
+          enforcementMode: Allowed
+          minSpotRatio: "20%"
+          fallback:
+            allowFallbackToOnDemand: true
+            maxFallbackRatio: "50%"
+          reversion:
+            requiredReversionAction: Active

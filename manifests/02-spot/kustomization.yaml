@@ -1,0 +1,12 @@
+# Spot On — Workload Class Spot placement with an On-Demand / Spot ratio.
+# ComputeClass/arcade-spot lives in manifests/00-platform.
+# WorkloadClass CRDs (workloads.gke.io) come from the gke-labs/workload-class
+# controller, installed by the platform base.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: arcade-spot
+resources:
+  - guardrail.yaml
+  - spot-placement-policy.yaml
+  - workloadclass.yaml
+  - deployment.yaml

@@ -1,0 +1,16 @@
+# Infrastructure profile: Spot pods go to ComputeClass/arcade-spot
+# (n4d spot -> n4 spot -> n4 on-demand, node pool auto-creation).
+# Active reversion with no minimum dwell time so the "capacity returns" beat
+# of the demo is visible within seconds.
+apiVersion: workloads.gke.io/v1
+kind: GKESpotPlacementPolicy
+metadata:
+  name: arcade-spot
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: spot
+spec:
+  customComputeClass: arcade-spot
+  reversion:
+    action: Active
+    minDurationOnFallback: 0s

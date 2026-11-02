@@ -1,0 +1,33 @@
+# Shock Absorber — Capacity Buffers. Cold burst vs. warm (active) buffer. ≈ 6–8 min.
+name: absorber
+cabinet: absorber
+title: "Shock Absorber"
+steps:
+  - caption: "Shock Absorber. A burst of 8 workers is coming. First, with no buffer at all."
+    action: { name: absorber.preset, preset: none }
+    wait: 4s
+  - caption: "Fire. Eight pods, no spare nodes. The autoscaler has to build them."
+    action: { name: absorber.burst, delta: 8 }
+    waitFor: { path: "burst.allReadyAt", truthy: true, timeout: 420s }
+    onTimeout: continue
+  - caption: "All ready. That is the cold-start cost: new VMs, boot, image pull, warm-up."
+    wait: 6s
+  - caption: "Reset, and reserve an active buffer of 8 units. GKE keeps that headroom running, shown as ghost pods."
+    action: { name: absorber.reset }
+    wait: 3s
+  - caption: "Provisioning the buffer. Watch the nodes appear with nothing on them."
+    action: { name: absorber.preset, preset: active8 }
+    waitFor: { path: "buffers[0].ready", truthy: true, timeout: 420s }
+    onTimeout: continue
+  - caption: "Headroom ready. Costs ${{ printf \"%.2f\" .headroomCostPerHour }} an hour to keep warm. Fire again."
+    action: { name: absorber.burst, delta: 8 }
+    waitFor: { path: "burst.allReadyAt", truthy: true, timeout: 240s }
+    onTimeout: continue
+  - caption: "Same burst, seconds instead of minutes. The pods snapped into the reserved space."
+    wait: 6s
+  - caption: "Standby buffers do the same with suspended VMs: cheaper to hold, about 30 seconds to wake. Try the standby preset yourself."
+    action: { name: absorber.reset }
+    wait: 4s
+  - caption: "Releasing the buffer."
+    action: { name: absorber.preset, preset: none }
+    wait: 3s

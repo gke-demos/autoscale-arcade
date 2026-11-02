@@ -1,0 +1,28 @@
+# The "workload owner" declares the outcome: 80 % of checkout pods on Spot,
+# fall back to On-Demand when Spot is unobtainable. The infrastructure
+# profile (GKESpotPlacementPolicy/arcade-spot) says where Spot lives.
+# spot.ratio action patches .spec.capacityStrategy.spotRatio.
+apiVersion: workloads.gke.io/v1
+kind: WorkloadClass
+metadata:
+  name: checkout
+  namespace: arcade-spot
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: spot
+spec:
+  podSelector:
+    matchLabels:
+      app: checkout
+  # Required by the guardrail (1..30 days); the arcade has no maintenance
+  # windows, this just satisfies the disruption constraint.
+  disruptionPolicy:
+    maxNonDisruptionDurationDays: 30
+  capacityStrategy:
+    type: Spot
+    spotRatio: "80%"
+    action: FallbackToOnDemand
+  infrastructureProfileRef:
+    group: workloads.gke.io
+    kind: GKESpotPlacementPolicy
+    name: arcade-spot

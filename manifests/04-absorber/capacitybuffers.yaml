@@ -1,0 +1,36 @@
+# Both buffers start at 0 units ("none" preset). absorber.preset sets:
+#   none: 0/0 · active4: 4/0 · active8: 8/0 · standby8: 0/8
+# Active buffer  = warm, running nodes sized for N burst units.
+# Standby buffer = nodes created, then SUSPENDED after the init time; resumed
+#                  (~30 s) when real pods need them. Cheaper than active.
+apiVersion: autoscaling.x-k8s.io/v1beta1
+kind: CapacityBuffer
+metadata:
+  name: absorber-active
+  namespace: arcade-absorber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: absorber
+spec:
+  provisioningStrategy: buffer.x-k8s.io/active-capacity
+  podTemplateRef:
+    name: burst-unit
+  replicas: 0
+---
+apiVersion: autoscaling.x-k8s.io/v1beta1
+kind: CapacityBuffer
+metadata:
+  name: absorber-standby
+  namespace: arcade-absorber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: absorber
+  annotations:
+    # Suspend standby nodes 1 min after they come up (default 5m) so the
+    # frozen-node state is reachable within a booth visit.
+    buffer.gke.io/standby-capacity-init-time: "1m"
+spec:
+  provisioningStrategy: buffer.gke.io/standby-capacity
+  podTemplateRef:
+    name: burst-unit
+  replicas: 0

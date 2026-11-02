@@ -1,0 +1,13 @@
+# Nitro — VPA CPU startup boost. Two identical pods race to Ready; the
+# "nitro" lane is covered by a VPA with startupBoost factor 4.
+# fifo order: the VPA must exist BEFORE the nitro pods are admitted, since the
+# boost is applied by the VPA admission webhook at pod creation only.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: arcade-nitro
+sortOptions:
+  order: fifo
+resources:
+  - vpa.yaml
+  - deployment-stock.yaml
+  - deployment-nitro.yaml

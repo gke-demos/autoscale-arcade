@@ -1,0 +1,20 @@
+# Cluster-scoped so the lights cabinet can scrape the arcade server in
+# arcade-system without owning anything there. Google Cloud Managed Service
+# for Prometheus (managed collection is on for the cluster) scrapes
+# arcade_queue_depth every 10 s and writes it to Cloud Monitoring, where the
+# AutoscalingMetric promql source reads it.
+apiVersion: monitoring.googleapis.com/v1
+kind: ClusterPodMonitoring
+metadata:
+  name: arcade-server
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: lights
+spec:
+  selector:
+    matchLabels:
+      app: arcade-server
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 10s

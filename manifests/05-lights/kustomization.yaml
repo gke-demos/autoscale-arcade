@@ -1,0 +1,16 @@
+# Lights Out — native scale to zero (HPA minReplicas 0 + AutoscalingMetric).
+# Metric path (ADR 0004, amended): arcade-server /metrics (arcade_queue_depth)
+# -> Managed Prometheus (ClusterPodMonitoring, 10 s scrape)
+# -> AutoscalingMetric/coin-queue promql source
+# -> HPA External metric autoscaling.gke.io|coin-queue|arcade_queue_depth.
+# fifo order so the AutoscalingMetric exists before the HPA references it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: arcade-lights
+sortOptions:
+  order: fifo
+resources:
+  - clusterpodmonitoring.yaml
+  - autoscalingmetric.yaml
+  - deployment.yaml
+  - hpa.yaml

@@ -1,0 +1,53 @@
+# Deployment/nitro: the boosted lane. Identical to stock; the only difference
+# is VerticalPodAutoscaler/nitro (vpa.yaml), which multiplies the CPU request
+# and limit by 4 at admission and resizes it back in place once Ready.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nitro
+  namespace: arcade-nitro
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: nitro
+    app: nitro
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nitro
+  template:
+    metadata:
+      labels:
+        app: nitro
+        app.kubernetes.io/part-of: autoscale-arcade
+        arcade.gke.io/cabinet: nitro
+        arcade.gke.io/workload: nitro
+        arcade.gke.io/lane: nitro
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+        - name: racer
+          image: us-central1-docker.pkg.dev/gke-demos-345619/autoscale-arcade/arcade:latest
+          args: ["worker", "--mode=race"]
+          env:
+            - name: WARMUP_CPU_SECONDS
+              value: "20"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 1
+            failureThreshold: 1
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi

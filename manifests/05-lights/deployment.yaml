@@ -1,0 +1,46 @@
+# Deployment/coin-worker: drains the coin queue. Starts at 1 replica ON
+# PURPOSE: an HPA whose target is already at 0 reports
+# "ScalingActive=False / ScalingDisabled" and never wakes it. Let the HPA
+# take it to zero itself (ScaledToZero=True). Never `kubectl scale` it to 0.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coin-worker
+  namespace: arcade-lights
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: lights
+    app: coin-worker
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: coin-worker
+  template:
+    metadata:
+      labels:
+        app: coin-worker
+        app.kubernetes.io/part-of: autoscale-arcade
+        arcade.gke.io/cabinet: lights
+        arcade.gke.io/workload: coin-worker
+    spec:
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: worker
+          image: us-central1-docker.pkg.dev/gke-demos-345619/autoscale-arcade/arcade:latest
+          args: ["worker", "--mode=coin"]
+          env:
+            - name: ARCADE_SERVER_URL
+              value: http://arcade-server.arcade-system/
+            - name: COIN_WORK_SECONDS
+              value: "8"
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              memory: 128Mi

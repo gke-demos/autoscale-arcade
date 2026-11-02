@@ -1,0 +1,37 @@
+# PodTemplate/burst-unit: the "unit" the buffers reserve room for. It must
+# match the scheduling shape of Deployment/burst-worker exactly (requests,
+# nodeSelector, tolerations) so every burst pod snaps into reserved headroom.
+# The cluster autoscaler only simulates these pods; they never run.
+apiVersion: v1
+kind: PodTemplate
+metadata:
+  name: burst-unit
+  namespace: arcade-absorber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: absorber
+template:
+  metadata:
+    labels:
+      app: burst-worker
+      app.kubernetes.io/part-of: autoscale-arcade
+      arcade.gke.io/cabinet: absorber
+      arcade.gke.io/workload: burst-unit
+  spec:
+    terminationGracePeriodSeconds: 0
+    nodeSelector:
+      cloud.google.com/compute-class: arcade-absorber
+    tolerations:
+      - key: arcade.demo/buffer
+        operator: Exists
+        effect: NoSchedule
+    containers:
+      - name: burst
+        image: registry.k8s.io/pause:3.9
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi

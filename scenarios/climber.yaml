@@ -1,0 +1,29 @@
+# Capacity Climber — Custom Compute Classes, node pool auto-creation, active migration.
+# Full run ≈ 10 min (two node scale-ups + a migration). Captions are read aloud.
+name: climber
+cabinet: climber
+title: "Capacity Climber"
+steps:
+  - caption: "Capacity Climber. One Compute Class, three rungs: Spot N4D, Spot N4, then On-Demand N4."
+    wait: 5s
+  - caption: "Scaling to 24 pods. No node pools exist yet. GKE creates them."
+    action: { name: climber.scale, replicas: 24 }
+    waitFor: { path: "ready", gte: 24, timeout: 420s }
+    onTimeout: continue
+  - caption: "{{ .ready }} of 24 running on the highest rung GKE could get. Nothing was pre-provisioned."
+    wait: 6s
+  - caption: "Locking rung one. Pretend Spot N4D just ran out."
+    action: { name: climber.lock, locked: true }
+    wait: 6s
+  - caption: "Scaling to 32. The new pods take rung two instead of waiting."
+    action: { name: climber.scale, replicas: 32 }
+    waitFor: { path: "ready", gte: 32, timeout: 420s }
+    onTimeout: continue
+  - caption: "Unlocking rung one. Active migration moves pods back up and drains the old nodes."
+    action: { name: climber.lock, locked: false }
+    wait: 90s
+  - caption: "Back to zero. Consolidation removes the empty nodes in about a minute."
+    action: { name: climber.scale, replicas: 0 }
+    waitFor: { path: "ready", lte: 0, timeout: 60s }
+    onTimeout: continue
+    wait: 5s

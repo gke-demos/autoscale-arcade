@@ -1,0 +1,7 @@
+# Capacity Climber — Custom Compute Classes + node pool auto-creation.
+# ComputeClass/arcade-climber lives in manifests/00-platform.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: arcade-climber
+resources:
+  - deployment.yaml

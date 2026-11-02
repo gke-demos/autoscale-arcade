@@ -1,0 +1,39 @@
+# Deployment/climber: 0 replicas at rest; "Scale 0 -> 24" is the game.
+# 500m CPU / 256Mi per pod so 24 pods need several nodes on the
+# auto-created pools of ComputeClass/arcade-climber.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: climber
+  namespace: arcade-climber
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: climber
+    app: climber
+spec:
+  replicas: 0
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: climber
+  template:
+    metadata:
+      labels:
+        app: climber
+        app.kubernetes.io/part-of: autoscale-arcade
+        arcade.gke.io/cabinet: climber
+        arcade.gke.io/workload: climber
+    spec:
+      terminationGracePeriodSeconds: 5
+      nodeSelector:
+        cloud.google.com/compute-class: arcade-climber
+      containers:
+        - name: climber
+          # Idle pod: it only needs to occupy a rung on the ladder.
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+            limits:
+              memory: 256Mi

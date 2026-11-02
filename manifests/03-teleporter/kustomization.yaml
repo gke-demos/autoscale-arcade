@@ -1,0 +1,9 @@
+# Pod Teleporter — live Pod Migration (gke-labs/pod-migration on GKE Pod
+# Snapshots + gVisor). The namespace, the PodMigration/arcade config and the
+# bucket IAM bindings are created by hack/cluster bootstrap (platform).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: arcade-teleporter
+resources:
+  - service.yaml
+  - statefulset.yaml

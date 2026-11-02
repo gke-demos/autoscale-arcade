@@ -1,0 +1,41 @@
+# Deployment/checkout: 6 pause-sized pods. The workload-class webhook injects
+# the Spot / On-Demand node affinity per pod to realise the ratio. The
+# compute-class nodeSelector is set here too: GKE only injects the matching
+# compute-class taint toleration when the selector is on the pod at
+# admission, and the WC webhook runs after GKE's (verified: pods stayed
+# Pending with "untolerated taint" when the template had no selector).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: arcade-spot
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: spot
+    app: checkout
+spec:
+  replicas: 6
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+        app.kubernetes.io/part-of: autoscale-arcade
+        arcade.gke.io/cabinet: spot
+        arcade.gke.io/workload: checkout
+    spec:
+      terminationGracePeriodSeconds: 5
+      nodeSelector:
+        cloud.google.com/compute-class: arcade-spot
+      containers:
+        - name: checkout
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              memory: 64Mi

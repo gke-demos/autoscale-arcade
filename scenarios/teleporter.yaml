@@ -1,0 +1,17 @@
+# Pod Teleporter — live Pod Migration (Pod Snapshots + gVisor). ≈ 1.5 min.
+name: teleporter
+cabinet: teleporter
+title: "Pod Teleporter"
+steps:
+  - caption: "Pod Teleporter. Meet the pet. Everything it knows lives in memory on {{ .pet.node }}. No disk, no database."
+    wait: 6s
+  - caption: "Teleporting. Snapshot the whole pod, evict it, restore it on another node."
+    action: { name: teleporter.random }
+    waitFor: { path: "jobs[0].phase", in: ["Succeeded", "SucceededWithoutRestore", "Failed"], timeout: 180s }
+  - caption: "Same ticks, same score, new node. {{ .lastMigration.downtimeMs }} milliseconds of downtime."
+    wait: 8s
+  - caption: "One more, so you believe it. Drag the pod yourself when the script ends."
+    action: { name: teleporter.random }
+    waitFor: { path: "jobs[0].phase", in: ["Succeeded", "SucceededWithoutRestore", "Failed"], timeout: 180s }
+  - caption: "{{ .lastMigration.from }} to {{ .lastMigration.to }}: {{ .lastMigration.downtimeMs }} ms. Lives survived: see the pet's counter."
+    wait: 8s

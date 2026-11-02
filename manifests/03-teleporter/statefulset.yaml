@@ -1,0 +1,72 @@
+# StatefulSet/pet: the migratable "arcade pet" (ADR 0003).
+# - updateStrategy OnDelete: patching the template nodeSelector must NOT roll
+#   the pod (a rollout DELETEs, which bypasses the eviction webhook).
+# - pod-migration.gke.io/enabled: "true" opts the pod into the eviction ->
+#   PodMigrationJob flow; runtimeClassName gvisor is required for snapshots.
+# - Small memory so whole-pod snapshots are fast; single container.
+# - nodeSelector arcade.gke.io/pool=gvisor keeps it on the fixed n4 gVisor
+#   pool (identical machine series => snapshots always restore). The server
+#   adds kubernetes.io/hostname=<target> on drag-and-drop.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pet
+  namespace: arcade-teleporter
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: teleporter
+    app: pet
+spec:
+  serviceName: pet
+  replicas: 1
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: OnDelete
+  selector:
+    matchLabels:
+      app: pet
+  template:
+    metadata:
+      labels:
+        app: pet
+        app.kubernetes.io/part-of: autoscale-arcade
+        arcade.gke.io/cabinet: teleporter
+        arcade.gke.io/workload: pet
+        pod-migration.gke.io/enabled: "true"
+    spec:
+      serviceAccountName: pet
+      runtimeClassName: gvisor
+      terminationGracePeriodSeconds: 10
+      nodeSelector:
+        arcade.gke.io/pool: gvisor
+      containers:
+        - name: pet
+          image: us-central1-docker.pkg.dev/gke-demos-345619/autoscale-arcade/arcade:latest
+          args: ["pet"]
+          env:
+            - name: ARCADE_SERVER_URL
+              value: http://arcade-server.arcade-system/
+            # NOTE: env vars are baked into the snapshot; after a restore
+            # NODE_NAME is stale. The server derives the node from the Pod.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 256Mi

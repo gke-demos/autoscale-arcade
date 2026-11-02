@@ -1,0 +1,10 @@
+# Shock Absorber — Capacity Buffers (active + standby).
+# ComputeClass/arcade-absorber (taint arcade.demo/buffer=true:NoSchedule; GKE Warden rejects gke.io taint keys) lives in
+# manifests/00-platform; buffer nodes are fenced for the burst worker.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: arcade-absorber
+resources:
+  - podtemplate.yaml
+  - capacitybuffers.yaml
+  - deployment.yaml
