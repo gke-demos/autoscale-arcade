@@ -238,8 +238,11 @@ export class MockServer {
   private gvisorNodes() {
     return this.nodes.filter((n) => n.gvisor && n.ready && !n.unschedulable).map((n) => n.name);
   }
+  private mockSpeed(): number {
+    return (typeof window !== 'undefined' && (window as unknown as { __MOCK_SPEED?: number }).__MOCK_SPEED) || 1;
+  }
   private after(ms: number, fn: () => void) {
-    this.timers.push({ at: Date.now() + ms, fn });
+    this.timers.push({ at: Date.now() + ms / this.mockSpeed(), fn });
   }
   private event(type: ArcadeEvent['type'], reason: string, object: string, message: string, cabinet?: string) {
     this.events.unshift({ ts: now(), type, reason, object, message, cabinet });
@@ -466,8 +469,11 @@ export class MockServer {
     const fits = (n: Node) => n.computeClass === 'arcade-spot' && (wantsSpot && spotAvailable ? n.spot : !n.spot);
     const ok = this.place(p, fits, 4, () => {
       const spot = wantsSpot && spotAvailable;
-      this.createNode({ pool: spot ? 'nap-n4d-spot-7d3e' : 'nap-n4-od-5c2a', machineType: spot ? 'n4d-standard-4' : 'n4-standard-4', spot, computeClass: 'arcade-spot' }, 'spot', rnd(12000, 18000));
-      this.after(17000, () => this.placeSpot(p));
+      const creating = this.nodes.filter((n) => n.computeClass === 'arcade-spot' && n.creating && n.spot === spot).length;
+      if (creating < 2) {
+        this.createNode({ pool: spot ? 'nap-n4d-spot-7d3e' : 'nap-n4-od-5c2a', machineType: spot ? 'n4d-standard-4' : 'n4-standard-4', spot, computeClass: 'arcade-spot' }, 'spot', rnd(10000, 14000));
+      }
+      this.after(15500, () => this.placeSpot(p));
     });
     if (ok) p.fallback = wantsSpot && !spotAvailable;
   }
@@ -496,7 +502,7 @@ export class MockServer {
       this.event('Normal', 'CapacityReturned', 'computeclass/arcade-spot', 'Spot rules restored; active reversion evicting fallback pods oldest-first', 'spot');
       const fallback = this.podsOf('checkout').filter((p) => p.fallback).sort((a, b) => a.created.localeCompare(b.created));
       fallback.forEach((p, i) =>
-        this.after(2000 + i * 1200, () => {
+        this.after(1500 + i * 900, () => {
           this.event('Normal', 'Reverted', `pod/${p.name}`, 'Evicted by GKESpotPlacementPolicy reversion (Active)', 'spot');
           this.evictAndReplace(p);
         }),
@@ -749,6 +755,12 @@ export class MockServer {
           this.reconcileSpot();
           break;
         case 'teleporter':
+          this.tele = { jobs: [], last: undefined };
+          this.pet.lives = 0;
+          this.pet.ticks = 0;
+          this.pet.score = 0;
+          this.pet.bornAt = now();
+          this.petRunning = true;
           break;
         case 'absorber':
           this.absorber.burstDesired = 0;
@@ -903,7 +915,8 @@ export class MockServer {
 
     // lights: workers drain the queue (one coin / 8 s / worker ≈ 0.0125/s/worker → speed up for demo: 1 coin / 2 s)
     this.petTickCount++;
-    if (this.petTickCount % 20 === 0) {
+    const stepEvery = Math.max(4, Math.round(20 / this.mockSpeed()));
+    if (this.petTickCount % stepEvery === 0) {
       const workers = this.podsOf('coin-worker').filter((p) => p.ready).length;
       if (workers && this.lights.queue > 0) {
         const n = Math.min(this.lights.queue, workers);
@@ -913,7 +926,7 @@ export class MockServer {
       }
       if (this.lights.queue === 0 && this.lights.desired > 0) {
         // stabilisation window 60s → shortened to 20s for the mock
-        if (!this.lights.scaledToZeroSince || t - this.lights.scaledToZeroSince > 20000) {
+        if (!this.lights.scaledToZeroSince || t - this.lights.scaledToZeroSince > 20000 / this.mockSpeed()) {
           this.lights.desired = 0;
           this.lights.lastScale = now();
           this.event('Normal', 'SuccessfulRescale', 'horizontalpodautoscaler/coin-worker', 'New size: 0; reason: All metrics below target (ScaledToZero)', 'lights');
