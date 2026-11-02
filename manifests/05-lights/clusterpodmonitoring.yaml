@@ -15,6 +15,6 @@ spec:
     matchLabels:
       app: arcade-server
   endpoints:
-    - port: metrics
+    - port: http
       path: /metrics
       interval: 10s

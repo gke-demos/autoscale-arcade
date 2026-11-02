@@ -1,8 +1,13 @@
 # Cluster-wide guardrail set by the "platform engineer" persona.
 # The gke-spot-placement plugin constraints allow (do not require) Spot
-# placement, floor the ratio at 20 %, allow fallback to On-Demand for at most
-# half of the pods, and require Active reversion so fallback pods move back
-# to Spot when capacity returns. The disruption block is mandatory in the
+# placement, floor the ratio at 20 %, allow ALL pods to fall back to
+# On-Demand, and require Active reversion so fallback pods move back to Spot
+# when capacity returns.
+# maxFallbackRatio is 100 % on purpose: once the budget is exhausted the
+# workload-class webhook emits a strict nodeSelector cloud.google.com/gke-spot
+# =true, which GKE Warden rejects together with a compute-class selector
+# ("violates one or more constraints"), so with 50 % a stockout left 2 of 6
+# pods uncreatable (verified 2026-11-02; event FallbackBudgetExhausted). The disruption block is mandatory in the
 # CRD; the arcade sets a permissive value and uses no disruption windows.
 apiVersion: workloads.gke.io/v1
 kind: WorkloadClassGuardrail
@@ -24,6 +29,6 @@ spec:
           minSpotRatio: "20%"
           fallback:
             allowFallbackToOnDemand: true
-            maxFallbackRatio: "50%"
+            maxFallbackRatio: "100%"
           reversion:
             requiredReversionAction: Active

@@ -8,12 +8,14 @@
 | Object | Where | Purpose |
 | :--- | :--- | :--- |
 | `ComputeClass/arcade-spot` (cluster) | `manifests/00-platform` | n4d Spot → n4 Spot → n4 On-Demand, node pool auto-creation |
-| `WorkloadClassGuardrail/arcade` (cluster) | `manifests/02-spot/guardrail.yaml` | Platform persona: `pluginConstraints.placement[gke-spot-placement]` → `enforcementMode: Allowed`, `minSpotRatio: 20%`, `fallback.allowFallbackToOnDemand: true`, `fallback.maxFallbackRatio: 50%`, `reversion.requiredReversionAction: Active`; mandatory `constraints.disruption.maxNonDisruptionDurationDays: 30` |
+| `WorkloadClassGuardrail/arcade` (cluster) | `manifests/02-spot/guardrail.yaml` | Platform persona: `pluginConstraints.placement[gke-spot-placement]` → `enforcementMode: Allowed`, `minSpotRatio: 20%`, `fallback.allowFallbackToOnDemand: true`, `fallback.maxFallbackRatio: 100%`, `reversion.requiredReversionAction: Active`; mandatory `constraints.disruption.maxNonDisruptionDurationDays: 30` |
 | `GKESpotPlacementPolicy/arcade-spot` (cluster) | `spot-placement-policy.yaml` | `customComputeClass: arcade-spot`, `reversion: {action: Active, minDurationOnFallback: 0s}` |
 | `WorkloadClass/checkout` | `workloadclass.yaml` | `podSelector app=checkout`, `capacityStrategy: {type: Spot, spotRatio: "80%", action: FallbackToOnDemand}`, `infrastructureProfileRef → GKESpotPlacementPolicy/arcade-spot`, `disruptionPolicy.maxNonDisruptionDurationDays: 30` (guardrail requires 1–30) |
 | `Deployment/checkout` | `deployment.yaml` | 6 pause pods, 100m, `nodeSelector cloud.google.com/compute-class: arcade-spot` |
 
 Start state (`reset`): 6 replicas, ratio 80, stockout off.
+
+Why `maxFallbackRatio: 100%` and not the 50 % from the design: on a ComputeClass-backed profile the webhook's "budget exhausted" behaviour emits a strict `nodeSelector cloud.google.com/gke-spot=true`, and GKE Warden rejects any pod that combines a compute-class selector with the `gke-spot` system label (`FailedCreate … warden-validating … violates one or more constraints`). With 50 % a stockout left checkout at 4/6 with `FallbackBudgetExhausted` events (live run 13:08–13:10 UTC). 100 % lets all six fall back and Active reversion bring all six home — the cleaner beat on stage. If you want to show the budget cap, lower it in `guardrail.yaml` and caption the Pending pods honestly.
 
 What the webhook injects on each pod (verified): spot-targeted pods get `nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution` weight 100 `cloud.google.com/gke-spot In [true]` (preferred, because the action is `FallbackToOnDemand`) plus toleration `cloud.google.com/gke-spot=true:NoSchedule`; on-demand-targeted pods get the complementary affinity. The compute-class nodeSelector/toleration must come from the Deployment template — GKE injects the compute-class toleration only for selectors present at admission, before the WC webhook runs.
 

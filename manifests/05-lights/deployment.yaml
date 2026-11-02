@@ -1,7 +1,9 @@
-# Deployment/coin-worker: drains the coin queue. Starts at 1 replica ON
-# PURPOSE: an HPA whose target is already at 0 reports
-# "ScalingActive=False / ScalingDisabled" and never wakes it. Let the HPA
-# take it to zero itself (ScaledToZero=True). Never `kubectl scale` it to 0.
+# Deployment/coin-worker: drains the coin queue. `replicas` is deliberately
+# NOT set: a new Deployment defaults to 1 replica, which is what the HPA
+# needs to attach (an HPA whose target is already at 0 reports
+# "ScalingActive=False / ScalingDisabled" and never wakes it), and leaving
+# the field out means later `kubectl apply` runs do not fight the HPA by
+# resetting the replica count. Never `kubectl scale` it to 0.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,7 +14,6 @@ metadata:
     arcade.gke.io/cabinet: lights
     app: coin-worker
 spec:
-  replicas: 1
   revisionHistoryLimit: 2
   selector:
     matchLabels:

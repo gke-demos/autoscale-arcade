@@ -7,7 +7,7 @@
 
 | Object | Where | Purpose |
 | :--- | :--- | :--- |
-| `ClusterPodMonitoring/arcade-server` (cluster) | `manifests/05-lights` | Managed Prometheus scrapes `arcade-server` pods (`app=arcade-server`, port `metrics`, `/metrics`) every 10 s |
+| `ClusterPodMonitoring/arcade-server` (cluster) | `manifests/05-lights` | Managed Prometheus scrapes `arcade-server` pods (`app=arcade-server`, container port `http` = 8080, path `/metrics`) every 10 s |
 | `AutoscalingMetric/coin-queue` | same | `promql: max(arcade_queue_depth{namespace="arcade-system"})` → External metric `autoscaling.gke.io\|coin-queue\|arcade_queue_depth` (see `.status.metricStatuses[].hpaName`) |
 | `Deployment/coin-worker` | same | `arcade worker --mode=coin`, `ARCADE_SERVER_URL=http://arcade-server.arcade-system/`, `COIN_WORK_SECONDS=8`; **ships with 1 replica** |
 | `HorizontalPodAutoscaler/coin-worker` | same | `minReplicas: 0`, `maxReplicas: 12`, External `AverageValue: 2`, `scaleDown.stabilizationWindowSeconds: 60`, scale-up 12 pods / 15 s |
@@ -43,7 +43,7 @@ curl -s http://arcade-server.arcade-system/metrics | grep arcade_queue_depth    
 | Symptom | Fix |
 | :--- | :--- |
 | `ScalingActive False / ScalingDisabled … replica count of the target is zero` | Someone scaled the Deployment to 0 by hand. `kubectl scale deploy/coin-worker -n arcade-lights --replicas=1`. |
-| `FailedGetExternalMetric: No recommendation` | Metric not flowing: check the ClusterPodMonitoring target status (`health: up`), that arcade-server exposes `arcade_queue_depth` on a container port **named `metrics`**, and the adapter log for `Error fetching metrics`. After the first coin it can take ~1–2 min for the first value. |
+| `FailedGetExternalMetric: No recommendation` | Metric not flowing: check the ClusterPodMonitoring target status (`health: up`), that arcade-server exposes `arcade_queue_depth` on the container port named `http` (8080), and the adapter log for `Error fetching metrics`. After the first coin it can take ~1–2 min for the first value. |
 | Pods never come back to 0 | Queue not empty (`/metrics`), or `COIN_WORK_SECONDS` too long; wait for the 60 s stabilization window. |
-| Workers Running but queue not draining | They cannot reach `arcade-server.arcade-system` (`/api/queue/claim` returns `{"coin":n}` or 204). Check network policy / server logs. |
+| Workers Running but queue not draining | They cannot reach `arcade-server.arcade-system` (Service ports 80 and 8080) (`/api/queue/claim` returns `{"coin":n}` or 204). Check network policy / server logs. |
 | Reset | `POST /api/actions/reset {"cabinet":"lights"}` (server empties the queue). Manual: nothing else needed; never scale to 0 manually. |

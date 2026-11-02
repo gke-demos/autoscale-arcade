@@ -16,4 +16,5 @@ spec:
   metrics:
     - promql:
         name: arcade_queue_depth
+        type: External
         query: max(arcade_queue_depth{namespace="arcade-system"})
