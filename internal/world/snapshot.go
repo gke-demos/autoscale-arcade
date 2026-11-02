@@ -350,9 +350,16 @@ func (w *World) climberState(st *WorldState) ClimberState {
 		if pr.MachineFamily == "" {
 			pr.MachineFamily = strings.SplitN(mstr(p, "machineType"), "-", 2)[0]
 		}
-		pr.Locked = mstr(p, "reservations", "affinity") == "AnyThenFail"
+		aff := mstr(p, "reservations", "affinity")
+		pr.Locked = aff == "Specific" || aff == "AnyThenFail"
 		if pr.Locked {
 			out.ComputeClass.Locked = true
+			if i == 0 {
+				// While locked, spot:true is stripped from priorities[0] so
+				// GKE accepts the Specific reservation rule; preserve Spot=true
+				// in the derived state so rung #1 remains "n4d spot (locked)".
+				pr.Spot = true
+			}
 		}
 		out.ComputeClass.Priorities = append(out.ComputeClass.Priorities, pr)
 		label := pr.MachineFamily + " on-demand"
