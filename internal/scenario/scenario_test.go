@@ -199,7 +199,8 @@ steps:
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
-	for r.State().Running || len(states) == 0 {
+	published := func() int { mu.Lock(); defer mu.Unlock(); return len(states) }
+	for r.State().Running || published() == 0 {
 		if time.Now().After(deadline) {
 			t.Fatalf("scenario did not finish: %+v", r.State())
 		}
