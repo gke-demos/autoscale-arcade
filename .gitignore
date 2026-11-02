@@ -3,3 +3,8 @@ dist/
 bin/
 .env
 *.local
+
+# The server embeds web/dist copied here at build time; keep only the placeholder.
+!internal/server/dist/
+internal/server/dist/*
+!internal/server/dist/index.html
