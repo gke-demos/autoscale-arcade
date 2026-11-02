@@ -53,17 +53,19 @@ func TestWarmupZeroIsNoop(t *testing.T) {
 
 func TestReadyFlipsAfterWarmup(t *testing.T) {
 	t.Setenv("WARMUP_CPU_SECONDS", "0.2")
-	t.Setenv("WORKER_ADDR", "127.0.0.1:18089")
+	t.Setenv("WORKER_ADDR", "127.0.0.1:0")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- Run(ctx, ModeBurst) }()
+	addrCh := make(chan string, 1)
+	go func() { done <- run(ctx, ModeBurst, addrCh) }()
+	ready := "http://" + <-addrCh + "/ready"
 
 	// Wait for the probe server to come up: it must answer 503 while warming.
 	var sawNotReady bool
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get("http://127.0.0.1:18089/ready")
+		resp, err := http.Get(ready)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusServiceUnavailable {
@@ -81,7 +83,7 @@ func TestReadyFlipsAfterWarmup(t *testing.T) {
 	}
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get("http://127.0.0.1:18089/ready")
+		resp, err := http.Get(ready)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {

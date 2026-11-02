@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -23,7 +24,10 @@ const (
 )
 
 // Run dispatches on mode and blocks until ctx is cancelled or a fatal error.
-func Run(ctx context.Context, mode string) error {
+func Run(ctx context.Context, mode string) error { return run(ctx, mode, nil) }
+
+// run is Run; if addrCh is non-nil the bound probe-server address is sent on it.
+func run(ctx context.Context, mode string, addrCh chan<- string) error {
 	log := slog.Default().With("component", "worker", "mode", mode)
 	addr := envOr("WORKER_ADDR", ":8080")
 	switch mode {
@@ -39,7 +43,7 @@ func Run(ctx context.Context, mode string) error {
 		}
 		ready := &atomic.Bool{}
 		ready.Store(true)
-		return serveAnd(ctx, addr, ready, log, func(ctx context.Context) error { return RunCoin(ctx, c) })
+		return serveAnd(ctx, addr, addrCh, ready, func(ctx context.Context) error { return RunCoin(ctx, c) })
 	case ModeBurst, ModeRace:
 		def := 10.0
 		if mode == ModeRace {
@@ -47,7 +51,7 @@ func Run(ctx context.Context, mode string) error {
 		}
 		warm := envSeconds("WARMUP_CPU_SECONDS", def)
 		ready := &atomic.Bool{}
-		return serveAnd(ctx, addr, ready, log, func(ctx context.Context) error {
+		return serveAnd(ctx, addr, addrCh, ready, func(ctx context.Context) error {
 			start := time.Now()
 			log.Info("warming up", "cpuSeconds", warm.Seconds())
 			used, err := Warmup(ctx, warm)
@@ -68,9 +72,16 @@ func Run(ctx context.Context, mode string) error {
 
 // serveAnd runs the probe server (/healthz always 200, /ready 200 once ready is
 // true) alongside fn, and returns when either finishes.
-func serveAnd(ctx context.Context, addr string, ready *atomic.Bool, log *slog.Logger, fn func(context.Context) error) error {
+func serveAnd(ctx context.Context, addr string, addrCh chan<- string, ready *atomic.Bool, fn func(context.Context) error) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("worker: listen %s: %w", addr, err)
+	}
+	if addrCh != nil {
+		addrCh <- ln.Addr().String()
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprintln(w, "ok") })
 	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, _ *http.Request) {
@@ -83,12 +94,12 @@ func serveAnd(ctx context.Context, addr string, ready *atomic.Bool, log *slog.Lo
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	errc := make(chan error, 2)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errc <- fmt.Errorf("worker: http server: %w", err)
 		}
 	}()
 	go func() { errc <- fn(ctx) }()
-	var err error
+	err = nil
 	select {
 	case <-ctx.Done():
 	case err = <-errc:

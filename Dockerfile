@@ -18,6 +18,7 @@ WORKDIR /src
 COPY go.mod go.sum* ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
+RUN mkdir -p scenarios
 # The server embeds internal/server/dist (see internal/server/ui.go); replace
 # the placeholder with the real UI build.
 COPY --from=web /src/web/dist/ ./internal/server/dist/
@@ -34,6 +35,9 @@ LABEL org.opencontainers.image.source="https://github.com/gke-demos/autoscale-ar
       org.opencontainers.image.title="autoscale-arcade" \
       org.opencontainers.image.description="Autoscale Arcade: arcade-server, pet and workers in one binary"
 COPY --from=build /out/arcade /arcade
+# Scenario YAML is read from disk at runtime (ARCADE_SCENARIOS).
+COPY --from=build /src/scenarios/ /scenarios/
+ENV ARCADE_SCENARIOS=/scenarios
 USER nonroot:nonroot
 EXPOSE 8080
 ENTRYPOINT ["/arcade"]

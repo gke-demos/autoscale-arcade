@@ -52,7 +52,7 @@ teardown: ## delete the GKE cluster and its snapshot bucket
 
 # ---- build -----------------------------------------------------------------
 web: ## build the UI into web/dist and stage it for go:embed
-	cd web && npm ci --no-audit --no-fund && npm run build
+	cd web && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npm run build
 	@mkdir -p internal/server/dist
 	rm -rf internal/server/dist/* && cp -r web/dist/. internal/server/dist/
 

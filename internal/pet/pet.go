@@ -37,6 +37,7 @@ type Config struct {
 	GapThreshold time.Duration // a tick gap longer than this counts as a migration (default 2s)
 	ServerURL    string        // ARCADE_SERVER_URL; empty disables reporting
 	ReportPath   string        // default /api/pet
+	ReportToken  string        // ARCADE_PET_TOKEN; sent as a bearer token when set
 	ListenAddr   string        // default :8080
 	SpecEnviron  string        // file with the restored pod's env (default /proc/gvisor/spec_environ)
 	Logger       *slog.Logger
@@ -77,6 +78,9 @@ func New(cfg Config) *Pet {
 	}
 	if cfg.ReportPath == "" {
 		cfg.ReportPath = envOr("PET_REPORT_PATH", "/api/pet")
+	}
+	if cfg.ReportToken == "" {
+		cfg.ReportToken = os.Getenv("ARCADE_PET_TOKEN")
 	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = envOr("PET_ADDR", ":8080")
@@ -199,7 +203,7 @@ func (p *Pet) runWithAddr(ctx context.Context, addr chan<- string) error {
 
 	var reporter *reporter
 	if p.cfg.ServerURL != "" {
-		reporter = newReporter(strings.TrimRight(p.cfg.ServerURL, "/")+p.cfg.ReportPath, log)
+		reporter = newReporter(strings.TrimRight(p.cfg.ServerURL, "/")+p.cfg.ReportPath, p.cfg.ReportToken, log)
 		log.Info("reporting pet state", "url", reporter.url)
 	} else {
 		log.Warn("ARCADE_SERVER_URL not set; pet state is only served on /state")
@@ -238,6 +242,7 @@ func (p *Pet) frozenTotal() time.Duration {
 // server can never stall the simulation.
 type reporter struct {
 	url      string
+	token    string
 	client   *http.Client
 	log      *slog.Logger
 	inflight chan struct{}
@@ -245,9 +250,10 @@ type reporter struct {
 	errs     int
 }
 
-func newReporter(url string, log *slog.Logger) *reporter {
+func newReporter(url, token string, log *slog.Logger) *reporter {
 	return &reporter{
 		url:      url,
+		token:    token,
 		client:   &http.Client{Timeout: 2 * time.Second},
 		log:      log,
 		inflight: make(chan struct{}, 1),
@@ -268,6 +274,9 @@ func (r *reporter) send(ctx context.Context, s State) {
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
+		if r.token != "" {
+			req.Header.Set("Authorization", "Bearer "+r.token)
+		}
 		resp, err := r.client.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
