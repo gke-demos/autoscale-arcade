@@ -41,7 +41,7 @@ kubectl -n workload-class-system logs deploy/workload-class-controller-manager -
 
 ## Stockout lever
 
-**Decision (validated on the real cluster, 2026-11-02): a cluster-scoped `CapacityQuota` that caps Spot nodes of `ComputeClass/arcade-spot` at 0, plus cordon + evict of the existing Spot nodes.** `spot.stockout {enabled:true}` creates the quota and drains; `{enabled:false}` deletes the quota and uncordons.
+**Decision (validated on the real cluster, 2026-11-02): a cluster-scoped `CapacityQuota` that caps Spot nodes of the Spot On pools (`arcade.demo/cabinet=spot`) at 0, plus cordon + evict of the existing Spot nodes.** `spot.stockout {enabled:true}` creates the quota and drains; `{enabled:false}` deletes the quota and uncordons.
 
 ```yaml
 apiVersion: autoscaling.x-k8s.io/v1beta1
@@ -52,7 +52,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      cloud.google.com/compute-class: arcade-spot
+      arcade.demo/cabinet: spot
       cloud.google.com/gke-spot: "true"
   limits:
     resources:
@@ -61,25 +61,21 @@ spec:
 
 Engage (what the server does, in order):
 1. `kubectl apply` the quota above (RBAC: `capacityquotas` create/delete in ClusterRole `arcade-server-cluster-writer`).
-2. For every node with `cloud.google.com/compute-class=arcade-spot,cloud.google.com/gke-spot=true`: cordon, then evict its arcade pods (`pods/eviction`). The replacements are Pending for ~60–90 s while NPAC creates an **on-demand** `n4-standard-2` pool; the Workload Class controller reports `InFallback=True`.
+2. For every node with `arcade.demo/cabinet=spot,cloud.google.com/gke-spot=true`: cordon, then evict its arcade pods (`pods/eviction`). The replacements schedule onto `spot-od` (or trigger CA scale-up on `spot-od` if full); the Workload Class controller reports `InFallback=True`.
 
-Disengage: delete the quota, uncordon. With `activeMigration.optimizeRulePriority: true` on the ComputeClass and `reversion: Active` on the placement policy, GKE moves the pods back to Spot and consolidates the on-demand nodes (observed: ~5–6 min after the delete). Empty Spot nodes left by step 2 are consolidated after `consolidationDelayMinutes: 1`.
+Disengage: delete the quota, uncordon the `spot-spot` nodes. With `reversion: {action: Active, minDurationOnFallback: 0s}` on `GKESpotPlacementPolicy/arcade-spot`, the Workload Class controller evicts fallback pods oldest-first so they reschedule onto `spot-spot`.
 
-Evidence (test Deployment, 8 × 500m pods, `nodeSelector cloud.google.com/compute-class: arcade-spot`):
+Evidence (validated on the non-CCC `spot-spot` / `spot-od` pools, 2026-11-02):
 
-| Time | Event |
+| Time (UTC) | Event |
 | :--- | :--- |
-| 12:41:04 | 2 pods created, no quota → NPAC pool `nap-n4d-standard-2-spot-…` (rung 1), node Ready at ~12:41:55 with `gke-spot=true`, `machine-family=n4d` |
-| 12:43:51 | quota created; 12:44:00 scaled to 8 |
-| 12:44:29 | CA status: the n4d-spot node group stays `NoActivity`; new groups `nap-n4-standard-2-…` (SPOT column empty = on-demand) scale up `InProgress` — rung 2 (n4 Spot) was skipped too because the quota matches any Spot node of the class |
-| 12:45:10 | 2 on-demand nodes Ready (`cloud.google.com/gke-provisioning=standard`), all 8 pods Running |
-| 12:46:06 | quota deleted |
-| ~12:51–12:52 | active migration: all 8 pods back on `n4d` Spot nodes (3 new spot nodes), on-demand pool empties |
+| 13:18 | 8-replica test Deployment (`nodeSelector: {arcade.demo/cabinet: spot}` + preferred Spot affinity), no quota → triggered CA scale-up on `spot-spot` (`gke-autoscale-arcade-spot-spot-88332450-grp`: `1→3` Ready, `ScaleUp: InProgress`) while `spot-od` stayed at 2 |
+| 13:19:45 | `CapacityQuota/arcade-spot-stockout` applied (`arcade.demo/cabinet: spot`, `cloud.google.com/gke-spot: "true"`, `nodes: "0"`), scaled to 16 replicas → CA status held `spot-spot` at `ScaleUp: NoActivity` (3/6, max 6) and triggered `ScaleUp: InProgress` (`2→3` Ready) on `spot-od` (`04d665b6-grp`, on-demand) |
+| 12:41–12:52 | Earlier CCC run also verified `CapacityQuota` against NPAC pools (`nap-n4d-standard-2-spot-…` held at `NoActivity` while on-demand `nap-n4-standard-2-…` scaled up) |
 
-Why not the alternatives:
-- **Patching the Spot rules out of the ComputeClass**: works, but it rewrites the object the audience is looking at (the "rungs" disappear from the HUD), the restore is a second patch that can race with `climber.lock`-style edits, and it changes the class for *all* pods, not just capacity. The quota leaves the ComputeClass untouched and is a single create/delete.
-- **Capping the auto-created pool** (`gcloud container node-pools update … --max-nodes`): the pool name is generated (`nap-n4d-standard-2-spot-<hash>`), there is one per rung, and a cap only exists once NPAC has created the pool; also needs Compute/Container IAM on the server. Not deterministic before the first scale-up.
-- `CapacityQuota` is the GA, in-cluster, label-selected mechanism meant exactly for "this class may not grow"; it is immediate (first CA loop ≈ 10 s), needs only Kubernetes RBAC, and `kubectl get capacityquota` is itself a nice thing to show.
+Why `CapacityQuota`:
+- Matches regular GKE node pool labels (`arcade.demo/cabinet: spot`) directly without needing a ComputeClass or Compute/Container IAM on `arcade-server`.
+- Immediate effect (first CA loop ≈ 10 s), single Kubernetes object create/delete, and `kubectl get capacityquota` is visible in the HUD.
 
 Gotchas: `limits.resources.nodes` counts *existing* nodes too, so with the quota in place CA never adds a Spot node even after the drain empties them; the quota must be deleted (not set to a higher number) to restore the start state. A real stockout (`RESOURCE_POOL_EXHAUSTED`, seen for on-demand n4 in us-central1-c during the test) shows up in the CA status ConfigMap as `scaleUp.backoffInfo.errorCode` — the HUD should surface it the same way.
 
