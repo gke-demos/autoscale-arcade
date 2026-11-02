@@ -13,7 +13,7 @@ bin/
 web/node_modules/
 web/dist/
 internal/server/dist/*
-!internal/server/dist/index.html
+!internal/server/dist/.gitkeep
 
 # Not needed in the image (scenarios/ is kept: the server may embed it)
 docs/

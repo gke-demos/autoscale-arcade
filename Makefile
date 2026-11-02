@@ -23,10 +23,10 @@ VERSION    ?= $(TAG)-$(REV)
 # per invocation. Set ARCADE_URL (and ARCADE_DEV_TOKEN) to talk to a running
 # server directly, e.g. ARCADE_URL=http://localhost:8080 make play-nitro.
 ARCADE_URL       ?=
-ARCADE_DEV_TOKEN ?= $(shell kubectl -n arcade-system get secret arcade-dev-token -o jsonpath='{.data.token}' 2>/dev/null | base64 -d)
+ARCADE_DEV_TOKEN ?= $(shell kubectl -n arcade-system get secret arcade-server -o jsonpath='{.data.ARCADE_DEV_TOKEN}' 2>/dev/null | base64 -d)
 PF_PORT          ?= 18080
 # arcade-server Service port
-SVC_PORT         ?= 80
+SVC_PORT         ?= 8080
 
 CABINETS := climber spot teleporter absorber lights nitro
 BIN      := bin/arcade
