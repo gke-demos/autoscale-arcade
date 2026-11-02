@@ -40,7 +40,9 @@ spec:
           imagePullPolicy: Always
           args: ["server", "--addr=:8080"]
           ports:
-            - name: http              # UI, /ws, /api, /healthz and /metrics (scrape port "http")
+            - name: http              # UI, /ws, /api, /healthz
+              containerPort: 8080
+            - name: metrics           # same listener; named for ClusterPodMonitoring (05-lights)
               containerPort: 8080
           env:
             - name: PROJECT_ID
@@ -49,6 +51,8 @@ spec:
               value: us-central1
             - name: CLUSTER
               value: autoscale-arcade
+            - name: ARCADE_SCENARIOS  # the image ships scenarios/ at /scenarios
+              value: /scenarios
             - name: IAP_AUDIENCE
               valueFrom:
                 secretKeyRef: { name: arcade-server, key: IAP_AUDIENCE, optional: true }
