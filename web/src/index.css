@@ -1,0 +1,172 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Trebuchet MS', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-ink: #070a14;
+  --color-panel: #0f1527;
+  --color-line: #27314d;
+  --color-neon: #22d3ee;
+  --color-amber: #f59e0b;
+  --color-pink: #fb7185;
+  --color-lime: #a3e635;
+}
+
+/* The whole UI scales with the display: 16px at 1080p, 32px at 4K. */
+html {
+  font-size: clamp(11px, 1.48vmin, 40px);
+  background: var(--color-ink);
+  color: #e5e7eb;
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+canvas {
+  touch-action: none;
+  outline: none;
+}
+
+@layer components {
+  /* ≥64px touch targets regardless of scale (contracts.md) */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl border px-5 font-bold tracking-wide transition
+      active:scale-95 disabled:opacity-40 disabled:pointer-events-none select-none;
+    min-height: max(64px, 4rem);
+    min-width: max(64px, 4rem);
+    font-size: 1.1rem;
+    border-color: var(--color-line);
+    background: linear-gradient(180deg, #1a2340, #0f1527);
+    color: #f1f5f9;
+    box-shadow:
+      0 0.25rem 0 #060912,
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  .btn:hover {
+    border-color: #3b4a73;
+  }
+  .btn-accent {
+    color: #0b1020;
+    border-color: transparent;
+    background: var(--btn-accent, var(--color-neon));
+    box-shadow:
+      0 0.25rem 0 rgba(0, 0, 0, 0.6),
+      0 0 1.5rem color-mix(in oklab, var(--btn-accent, var(--color-neon)) 55%, transparent);
+  }
+  .btn-ghost {
+    background: rgba(15, 21, 39, 0.65);
+    backdrop-filter: blur(6px);
+  }
+  .btn-sm {
+    min-height: max(48px, 3rem);
+    min-width: max(48px, 3rem);
+    font-size: 0.95rem;
+    padding-inline: 1rem;
+    border-radius: 1rem;
+  }
+  .panel {
+    @apply rounded-2xl border;
+    border-color: rgba(39, 49, 77, 0.9);
+    background: rgba(10, 14, 28, 0.78);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.45);
+  }
+  .kbd {
+    @apply inline-flex items-center justify-center rounded-md border px-1.5 font-mono text-[0.75em];
+    border-color: #3b4a73;
+    background: #121a30;
+    min-width: 1.6em;
+    height: 1.6em;
+  }
+  .neon-text {
+    text-shadow:
+      0 0 0.3em currentColor,
+      0 0 1em color-mix(in oklab, currentColor 45%, transparent);
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 0.4rem;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #27314d;
+    border-radius: 1rem;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+@keyframes marquee {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.animate-blink {
+  animation: blink 1.1s steps(2, start) infinite;
+}
+.animate-marquee {
+  animation: marquee 18s linear infinite;
+}
+
+input[type='range'].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: max(64px, 4rem);
+  background: transparent;
+  cursor: pointer;
+}
+input[type='range'].slider::-webkit-slider-runnable-track {
+  height: 1.25rem;
+  border-radius: 1rem;
+  background: linear-gradient(90deg, var(--slider-accent, #22d3ee) 0%, var(--slider-accent, #22d3ee) var(--pct, 0%), #1b2440 var(--pct, 0%));
+  border: 1px solid #27314d;
+}
+input[type='range'].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: max(64px, 3.5rem);
+  height: max(64px, 3.5rem);
+  margin-top: calc((1.25rem - max(64px, 3.5rem)) / 2);
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #fff, #cbd5e1 50%, #64748b);
+  border: 3px solid var(--slider-accent, #22d3ee);
+  box-shadow: 0 0.3rem 1rem rgba(0, 0, 0, 0.6);
+}
+input[type='range'].slider::-moz-range-track {
+  height: 1.25rem;
+  border-radius: 1rem;
+  background: #1b2440;
+}
+input[type='range'].slider::-moz-range-thumb {
+  width: max(64px, 3.5rem);
+  height: max(64px, 3.5rem);
+  border-radius: 9999px;
+  background: #e2e8f0;
+  border: 3px solid var(--slider-accent, #22d3ee);
+}

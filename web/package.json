@@ -1,0 +1,37 @@
+{
+  "name": "autoscale-arcade-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autoscale Arcade kiosk UI (Vite + React 19 + React Three Fiber)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:mock": "VITE_MOCK=1 vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.4.2",
+    "@react-three/fiber": "^9.2.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "three": "^0.177.0",
+    "zustand": "^5.0.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.11",
+    "@types/node": "^24.0.9",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@types/three": "^0.177.0",
+    "@vitejs/plugin-react": "^4.6.0",
+    "tailwindcss": "^4.1.11",
+    "typescript": "5.8",
+    "vite": "^7.0.6"
+  },
+  "overrides": {
+    "esprima-fb": "15001.1001.0-dev-harmony-fb"
+  }
+}
