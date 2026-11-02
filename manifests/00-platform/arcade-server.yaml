@@ -92,7 +92,10 @@ spec:
   selector:
     app.kubernetes.io/name: arcade-server
   ports:
-    - name: http
+    - name: http                  # in-cluster default: http://arcade-server.arcade-system/
+      port: 80
+      targetPort: http
+    - name: http-alt              # Gateway backendRef + port-forward use 8080
       port: 8080
       targetPort: http
 ---
