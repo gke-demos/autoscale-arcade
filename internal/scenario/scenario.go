@@ -231,7 +231,7 @@ func (r *Runner) Run(name string) error {
 	if name == "" {
 		return errors.New("scenario name required")
 	}
-	s, err := r.Load(name)
+	s, err := r.Resolve(name)
 	if err != nil {
 		return err
 	}
@@ -316,6 +316,31 @@ func (r *Runner) runOnce(ctx context.Context, s *Scenario, attract bool) error {
 	return nil
 }
 
+// aliases map the cabinets' display slugs to their ids so either naming works
+// from the UI, the Makefile and the terminal.
+var aliases = map[string]string{
+	"capacity-climber": world.CabinetClimber,
+	"spot-on":          world.CabinetSpot,
+	"pod-teleporter":   world.CabinetTeleporter,
+	"shock-absorber":   world.CabinetAbsorber,
+	"lights-out":       world.CabinetLights,
+}
+
+// Resolve finds a scenario by file name, by its `name:`/`cabinet:` field, or
+// by a well-known alias (capacity-climber → climber, ...).
+func (r *Runner) Resolve(name string) (*Scenario, error) {
+	if s, err := r.Load(name); err == nil {
+		return s, nil
+	}
+	if s, err := r.loadChild(name); err == nil {
+		return s, nil
+	}
+	if id, ok := aliases[name]; ok {
+		return r.loadChild(id)
+	}
+	return nil, fmt.Errorf("scenario %q not found in %s", name, r.dir)
+}
+
 // loadChild resolves an entry of all.yaml: a scenario name or a cabinet id.
 func (r *Runner) loadChild(name string) (*Scenario, error) {
 	if s, err := r.Load(name); err == nil {
@@ -327,7 +352,7 @@ func (r *Runner) loadChild(name string) (*Scenario, error) {
 			continue
 		}
 		s, err := r.Load(e.Name())
-		if err == nil && s.Cabinet == name && len(s.Cabinets) == 0 && len(s.Scenarios) == 0 {
+		if err == nil && (s.Cabinet == name || s.Name == name) && len(s.Cabinets) == 0 && len(s.Scenarios) == 0 {
 			return s, nil
 		}
 	}

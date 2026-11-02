@@ -186,6 +186,15 @@ steps:
 	if infos := r.List(); len(infos) != 3 {
 		t.Fatalf("list: %+v", infos)
 	}
+	if _, err := r.Resolve("lights-out"); err != nil { // alias → cabinet id → lights-out.yaml
+		t.Errorf("alias resolve: %v", err)
+	}
+	if _, err := r.Resolve("lights"); err != nil { // cabinet id → file with cabinet: lights
+		t.Errorf("cabinet resolve: %v", err)
+	}
+	if _, err := r.Resolve("nope"); err == nil {
+		t.Error("unknown scenario must fail")
+	}
 	if err := r.Run("all"); err != nil {
 		t.Fatal(err)
 	}
