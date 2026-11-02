@@ -181,24 +181,36 @@ func (p *Pet) runWithAddr(ctx context.Context, addr chan<- string) error {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(p.Snapshot(time.Now()))
 	})
-	srv := &http.Server{Addr: p.cfg.ListenAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	ln, err := net.Listen("tcp", p.cfg.ListenAddr)
-	if err != nil {
-		return fmt.Errorf("pet: listen %s: %w", p.cfg.ListenAddr, err)
-	}
-	if addr != nil {
-		addr <- ln.Addr().String()
-	}
 	errc := make(chan error, 1)
-	go func() {
-		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errc <- err
+	startHTTP := func(first bool) (*http.Server, error) {
+		ln, err := net.Listen("tcp", p.cfg.ListenAddr)
+		if err != nil {
+			return nil, fmt.Errorf("pet: listen %s: %w", p.cfg.ListenAddr, err)
 		}
-	}()
+		if first && addr != nil {
+			addr <- ln.Addr().String()
+		}
+		srv := &http.Server{Addr: p.cfg.ListenAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+		go func() {
+			if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+				select {
+				case errc <- err:
+				default:
+				}
+			}
+		}()
+		return srv, nil
+	}
+	srv, err := startHTTP(true)
+	if err != nil {
+		return err
+	}
 	defer func() {
-		shutdownCtx, c := context.WithTimeout(context.Background(), 2*time.Second)
-		defer c()
-		_ = srv.Shutdown(shutdownCtx)
+		if srv != nil {
+			shutdownCtx, c := context.WithTimeout(context.Background(), 2*time.Second)
+			defer c()
+			_ = srv.Shutdown(shutdownCtx)
+		}
 	}()
 
 	var reporter *reporter
@@ -223,6 +235,20 @@ func (p *Pet) runWithAddr(ctx context.Context, addr chan<- string) error {
 			if p.Tick(now) {
 				s := p.Snapshot(now)
 				log.Info("restored from snapshot: same memory, new life", "lives", s.Lives, "ticks", s.Ticks, "node", s.Node, "frozen", p.frozenTotal())
+				if reporter != nil {
+					reporter.client.CloseIdleConnections()
+				}
+				// Re-bind the HTTP listener after a gVisor restore so the new
+				// sandbox's netstack accepts probes on the restored pod IP.
+				if srv != nil && addr == nil {
+					_ = srv.Close()
+					if next, err := startHTTP(false); err != nil {
+						log.Warn("re-listen after restore failed", "err", err)
+						srv = nil
+					} else {
+						srv = next
+					}
+				}
 			}
 			if reporter != nil {
 				reporter.send(ctx, p.Snapshot(now))
