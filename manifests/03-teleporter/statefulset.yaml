@@ -42,6 +42,10 @@ spec:
       containers:
         - name: pet
           image: us-central1-docker.pkg.dev/gke-demos-345619/autoscale-arcade/arcade:latest
+          # Keep IfNotPresent on :latest so a mid-demo image push doesn't pull a
+          # new binary onto the target node while restoring a checkpoint of the
+          # previous binary (which causes SIGSEGV / exit 139 / RestoreLost).
+          imagePullPolicy: IfNotPresent
           args: ["pet"]
           env:
             - name: ARCADE_SERVER_URL

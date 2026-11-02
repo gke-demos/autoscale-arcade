@@ -45,7 +45,7 @@ kubectl -n pod-migration-system logs deploy/pod-migration-controller -f
 | Symptom | Fix |
 | :--- | :--- |
 | Migration `Failed`, controller log `runsc checkpoint … closing state file failed: input/output error` | The snapshot bucket is missing or the KSA cannot write to it. `hack/cluster.sh storage`; check `gcloud storage buckets get-iam-policy gs://<bucket>`. |
-| `SucceededWithoutRestore` | Cold start: the snapshot could not be restored (different machine type/CPU platform, or snapshot not Ready). All three gVisor nodes must be `n4-standard-4`. The UI says so honestly. |
+| `SucceededWithoutRestore` | Cold start: the snapshot could not be restored (different machine type/CPU platform, snapshot not Ready, or `arcade:latest` was rebuilt mid-run so the target node pulled a new binary while restoring a checkpoint of the old binary — keep `imagePullPolicy: IfNotPresent`). All gVisor nodes must be `n4-standard-4`. The UI says so honestly. |
 | `pet-0` Pending after a drag | Template pinned to a node that is cordoned/full/gone. `kubectl patch statefulset pet -n arcade-teleporter --type=json -p='[{"op":"remove","path":"/spec/template/spec/nodeSelector/kubernetes.io~1hostname"}]'` then `kubectl delete pod pet-0 -n arcade-teleporter`. |
 | Eviction returns 200 and the pod is simply recreated (no PMJ) | Webhook not intercepting: label `pod-migration.gke.io/enabled: "true"` missing, or `PodMigration/arcade` absent, or controller down (`kubectl get pods -n pod-migration-system`). |
 | Pod `ImagePullBackOff` | Image not pushed yet / tag wrong; `kubectl rollout restart` is **not** safe here (OnDelete) — `kubectl delete pod pet-0` after fixing the image. |
