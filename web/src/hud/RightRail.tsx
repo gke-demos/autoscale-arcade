@@ -21,10 +21,11 @@ export function RightRail({ world }: { world: WorldState }) {
   const yamls = sections.filter((s) => s.kind === 'yaml');
   const events = sections.filter((s) => s.title === 'Events');
   const shown = tab === 'table' ? tables : tab === 'yaml' ? yamls : events;
-  const accent = view === 'lobby' ? '#22d3ee' : CABINETS[view].accent;
+  const accent = view === 'lobby' ? '#4285f4' : CABINETS[view].accent;
 
   return (
     <aside className="panel pointer-events-auto flex h-full flex-col overflow-hidden">
+      <div className="google-bar h-[3px] w-full shrink-0" />
       <div className="flex items-center gap-1 border-b border-line/80 px-3 py-2">
         <span className="mr-auto font-mono text-[0.8rem] text-slate-400">
           <span style={{ color: accent }}>❯</span> kubectl

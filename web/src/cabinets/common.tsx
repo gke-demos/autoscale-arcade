@@ -169,6 +169,79 @@ export function CostMeter({ perHour, label = 'Cost', sub }: { perHour: number; l
   return <Stat label={label} value={<span className="text-emerald-300">{usd(perHour, 3)}/h</span>} sub={sub ?? 'list price estimate'} />;
 }
 
-export function Badge({ children, tone = 'bg-slate-700 text-slate-100' }: { children: ReactNode; tone?: string }) {
+export function Badge({ children, tone = 'bg-[#303134] text-[#e8eaed]' }: { children: ReactNode; tone?: string }) {
   return <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-mono text-[0.7rem] font-bold ${tone}`}>{children}</span>;
+}
+
+export interface MissionStep {
+  label: string;
+  detail?: string;
+  done: boolean;
+  active?: boolean;
+}
+
+/**
+ * Prominent "How to Play / Mission" card rendered at the top of every cabinet's
+ * left control rail so players immediately understand the goal, steps, and win condition.
+ */
+export function MissionCard({
+  goal,
+  win,
+  steps,
+  accent = '#4285f4',
+}: {
+  goal: ReactNode;
+  win: ReactNode;
+  steps: MissionStep[];
+  accent?: string;
+}) {
+  const doneCount = steps.filter((s) => s.done).length;
+  const allDone = doneCount === steps.length && steps.length > 0;
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-xl border bg-[#131314]/85 p-3"
+      style={{ borderColor: allDone ? '#34a853' : `${accent}66` }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.18em]" style={{ color: allDone ? '#34a853' : accent }}>
+          {allDone ? '★ MISSION COMPLETE' : '🎯 MISSION · HOW TO PLAY'}
+        </span>
+        <span className="rounded-full bg-[#303134] px-2 py-0.5 font-mono text-[0.65rem] font-bold text-[#e8eaed]">
+          {doneCount}/{steps.length} steps
+        </span>
+      </div>
+      <div className="text-[0.82rem] leading-snug text-[#e8eaed]">{goal}</div>
+      <div className="flex flex-col gap-1.5 pt-0.5">
+        {steps.map((s, i) => (
+          <div
+            key={i}
+            className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-[0.76rem] leading-tight transition-colors ${
+              s.done
+                ? 'border-[#34a853]/60 bg-[#34a853]/15 text-[#e8eaed]'
+                : s.active
+                  ? 'border-[#fbbc04]/60 bg-[#fbbc04]/10 text-[#e8eaed]'
+                  : 'border-[#3c4043] bg-[#202124]/80 text-[#9aa0a6]'
+            }`}
+          >
+            <span
+              className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full font-mono text-[0.65rem] font-bold ${
+                s.done ? 'bg-[#34a853] text-[#131314]' : s.active ? 'bg-[#fbbc04] text-[#131314]' : 'bg-[#3c4043] text-[#e8eaed]'
+              }`}
+            >
+              {s.done ? '✓' : i + 1}
+            </span>
+            <div className="flex flex-col">
+              <span className="font-semibold text-[#e8eaed]">{s.label}</span>
+              {s.detail && <span className="mt-0.5 text-[0.68rem] text-[#9aa0a6]">{s.detail}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5 border-t border-[#3c4043]/80 pt-1.5 font-mono text-[0.68rem] text-[#9aa0a6]">
+        <span className="text-[#fbbc04]">🏆</span>
+        <span className="font-bold text-[#e8eaed]">Win / Score:</span>
+        <span className="truncate">{win}</span>
+      </div>
+    </div>
+  );
 }

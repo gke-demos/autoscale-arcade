@@ -14,21 +14,21 @@ export function Stage({ children, autoRotate = false }: { children: ReactNode; a
       dpr={[1, 2]}
       gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }}
       onCreated={({ gl }) => {
-        gl.setClearColor('#070a14');
+        gl.setClearColor('#131314');
         gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1.35;
+        gl.toneMappingExposure = 1.3;
       }}
       onPointerMissed={() => useArcade.getState().touch()}
       style={{ position: 'absolute', inset: 0 }}
     >
       <PerspectiveCamera makeDefault fov={38} position={[0, 14, 22]} near={0.1} far={200} />
-      <fog attach="fog" args={['#070a14', 45, 110]} />
-      <ambientLight intensity={0.7} />
-      <hemisphereLight args={['#bfdbfe', '#1e293b', 0.8]} />
+      <fog attach="fog" args={['#131314', 45, 110]} />
+      <ambientLight intensity={0.75} />
+      <hemisphereLight args={['#e8eaed', '#202124', 0.85]} />
       <directionalLight position={[12, 20, 8]} intensity={2.2} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-25} shadow-camera-right={25} shadow-camera-top={25} shadow-camera-bottom={-25} />
-      <pointLight position={[-15, 8, -10]} intensity={60} color="#22d3ee" />
-      <pointLight position={[15, 6, -12]} intensity={50} color="#a78bfa" />
-      <Grid position={[0, -0.6, 0]} args={[120, 120]} cellSize={1} cellThickness={0.6} cellColor="#16213d" sectionSize={6} sectionThickness={1.1} sectionColor="#1e3a8a" fadeDistance={60} fadeStrength={1.5} infiniteGrid />
+      <pointLight position={[-15, 8, -10]} intensity={55} color="#4285f4" />
+      <pointLight position={[15, 6, -12]} intensity={45} color="#34a853" />
+      <Grid position={[0, -0.6, 0]} args={[120, 120]} cellSize={1} cellThickness={0.6} cellColor="#202124" sectionSize={6} sectionThickness={1.1} sectionColor="#3c4043" fadeDistance={60} fadeStrength={1.5} infiniteGrid />
       <ContactShadows position={[0, -0.59, 0]} opacity={0.5} scale={60} blur={2.4} far={6} color="#000000" />
       <OrbitControls makeDefault enabled={!dragging} enablePan={false} minDistance={8} maxDistance={60} minPolarAngle={0.35} maxPolarAngle={Math.PI / 2.25} autoRotate={autoRotate && !dragging} autoRotateSpeed={0.5} enableDamping dampingFactor={0.08} />
       {children}

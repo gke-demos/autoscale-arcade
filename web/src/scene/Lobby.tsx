@@ -28,8 +28,8 @@ export function Lobby({ world }: { world: WorldState }) {
       <group position={[0, 0, clusterZ]}>
         <ClusterScene layout={layout} showLabels={false} />
         <Html position={[0, 0.3, layout.bounds.maxZ + 0.8]} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="whitespace-nowrap rounded-full border border-cyan-300/30 bg-black/60 px-3 py-1 font-mono text-[0.7rem] tracking-[0.25em] text-cyan-200">
-            CLUSTER OVERVIEW · {world.nodes.length} NODES · {world.pods.filter((p) => !p.buffer).length} PODS
+          <div className="whitespace-nowrap rounded-full border border-[#5f6368] bg-[#202124]/90 px-3 py-1 font-mono text-[0.7rem] tracking-[0.22em] text-[#e8eaed]">
+            LIVE CLUSTER · {world.nodes.length} NODES · {world.pods.filter((p) => !p.buffer).length} PODS
           </div>
         </Html>
       </group>
@@ -66,12 +66,12 @@ function Cabinet({ id, position, rotation, world, onOpen }: { id: CabinetId; pos
         onClick={(e) => { e.stopPropagation(); onOpen(); }}
         onPointerOver={(e) => { e.stopPropagation(); hover.current = true; document.body.style.cursor = 'pointer'; }}
         onPointerOut={() => { hover.current = false; document.body.style.cursor = 'auto'; }}>
-        <meshStandardMaterial color="#1b2747" roughness={0.5} metalness={0.35} emissive={meta.accent} emissiveIntensity={0.06} />
+        <meshStandardMaterial color="#202124" roughness={0.45} metalness={0.3} emissive={meta.accent} emissiveIntensity={0.05} />
       </RoundedBox>
       {/* screen */}
       <mesh position={[0, 2.5, 1.12]} rotation={[-0.25, 0, 0]}>
         <planeGeometry args={[2.6, 1.7]} />
-        <meshStandardMaterial ref={screenRef} color={meta.accent} emissive={meta.accent} emissiveIntensity={0.6} toneMapped={false} />
+        <meshStandardMaterial ref={screenRef} color="#131314" emissive={meta.accent} emissiveIntensity={0.45} toneMapped={false} />
       </mesh>
       {/* marquee */}
       <mesh position={[0, 4.0, 1.12]}>
@@ -81,11 +81,11 @@ function Cabinet({ id, position, rotation, world, onOpen }: { id: CabinetId; pos
       {/* control deck */}
       <mesh position={[0, 1.35, 1.3]} rotation={[-0.9, 0, 0]}>
         <boxGeometry args={[2.8, 0.9, 0.2]} />
-        <meshStandardMaterial color="#1e293b" />
+        <meshStandardMaterial color="#303134" />
       </mesh>
       <mesh position={[-0.7, 1.75, 1.55]}>
         <sphereGeometry args={[0.18, 16, 16]} />
-        <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.4} />
+        <meshStandardMaterial color="#ea4335" emissive="#ea4335" emissiveIntensity={0.4} />
       </mesh>
       <mesh position={[0.6, 1.72, 1.5]}>
         <cylinderGeometry args={[0.2, 0.2, 0.1, 20]} />
@@ -93,16 +93,17 @@ function Cabinet({ id, position, rotation, world, onOpen }: { id: CabinetId; pos
       </mesh>
       <pointLight position={[0, 3.6, 2]} color={meta.accent} intensity={running ? 14 : 6} distance={8} decay={2} />
       <Html position={[0, 2.5, 1.2]} center transform={false} zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
-        <div className="w-[14rem] text-center" style={{ transform: 'translateY(-10%)' }}>
-          <div className="font-mono text-[0.6rem] tracking-[0.3em] text-slate-300">
+        <div className="w-[14.5rem] rounded-xl border border-white/15 bg-[#131314]/85 px-2.5 py-2 text-center shadow-lg" style={{ transform: 'translateY(-8%)' }}>
+          <div className="font-mono text-[0.58rem] tracking-[0.22em] text-[#9aa0a6]">
             <span className="kbd mr-1">{meta.key}</span>
             {meta.subtitle.toUpperCase()}
           </div>
-          <div className="text-[1.25rem] font-black leading-tight text-white drop-shadow-[0_0_12px_rgba(0,0,0,1)]">{meta.title}</div>
-          <div className="mt-1 font-mono text-[0.62rem] text-slate-200/80">
+          <div className="mt-0.5 text-[1.15rem] font-black leading-tight text-white">{meta.title}</div>
+          <div className="mt-1 line-clamp-2 text-[0.65rem] leading-snug text-[#e8eaed]/90">{meta.goal}</div>
+          <div className="mt-1 font-mono text-[0.6rem] text-[#9aa0a6]">
             {pods.length} pod{pods.length === 1 ? '' : 's'}
             {pending ? ` · ${pending} pending` : ''}
-            {running && <span className="ml-1 animate-blink text-amber-200">▶ running</span>}
+            {running && <span className="ml-1 animate-blink text-[#fbbc04]">▶ running</span>}
           </div>
         </div>
       </Html>

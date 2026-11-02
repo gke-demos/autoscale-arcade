@@ -7,11 +7,11 @@ import { ClusterScene, Flame } from '../scene/ClusterScene';
 import { SLAB } from '../scene/layout';
 import { useArcade } from '../store';
 import type { NitroLane, Pod, WorldState } from '../types';
-import { ActionButton, Badge, ControlGroup, Stat, eventsSection, nodeTable, shortNodeName, useCabinetLayout, useNow } from './common';
+import { ActionButton, Badge, ControlGroup, MissionCard, Stat, eventsSection, nodeTable, shortNodeName, useCabinetLayout, useNow } from './common';
 import type { CabinetModule, CabinetProps, HudSection } from './types';
 
-const ACCENT = '#fb7185';
-const STOCK = '#94a3b8';
+const ACCENT = '#ea4335';
+const STOCK = '#9aa0a6';
 
 function lanePod(world: WorldState, lane: NitroLane): Pod | undefined {
   return (lane.pod && world.pods.find((p) => p.name === lane.pod)) || world.pods.find((p) => p.cabinet === 'nitro' && p.workload === lane.name && !p.deleting);
@@ -41,12 +41,12 @@ function Scene({ world }: CabinetProps) {
         {/* track */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.44, 1.2]} receiveShadow>
           <planeGeometry args={[trackLen + 2, 4.2]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.95} />
+          <meshStandardMaterial color="#202124" roughness={0.95} />
         </mesh>
         {/* finish line */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[trackLen / 2, -0.43, 1.2]}>
           <planeGeometry args={[0.4, 4.2]} />
-          <meshBasicMaterial color="#f8fafc" />
+          <meshBasicMaterial color="#f8f9fa" />
         </mesh>
         <Html position={[trackLen / 2, 0.6, -1]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
           <div className="whitespace-nowrap font-mono text-[0.7rem] tracking-[0.3em] text-slate-300">🏁 READY=TRUE</div>
@@ -125,8 +125,39 @@ function Controls({ world }: CabinetProps) {
     }
   }, [race, now, setPrompt]);
 
+  const nitroLane = race?.lanes.find((l) => l.name === 'nitro');
+  const stockLane = race?.lanes.find((l) => l.name === 'stock');
+  const nitroPod = nitroLane ? lanePod(world, nitroLane) : world.pods.find((p) => p.cabinet === 'nitro' && p.workload === 'nitro' && !p.deleting);
+  const unboosted = !!(nitroLane?.unboostedAt || (nitroPod?.boost && !nitroPod.boost.active));
+
   return (
     <>
+      <MissionCard
+        accent={ACCENT}
+        goal="Win the cold-start drag race! Both pods run the exact same CPU-bound startup (2M PBKDF2 rounds), but NITRO gets a 4× VPA CPU Startup Boost (250m → 1000m) and then resizes back in-place with 0 restarts."
+        win="Fastest NITRO cold-start time (s) & speedup multiplier vs. STOCK"
+        steps={[
+          {
+            label: 'Start the drag race (🏁 Start race)',
+            detail: 'Rollout-restarts both stock (250m) and nitro (boosted to 1000m) simultaneously.',
+            done: !!race,
+            active: !race,
+          },
+          {
+            label: 'NITRO crosses the Ready=True finish line first',
+            detail: '4× CPU boost lets nitro finish its warm-up ~3–4× faster than stock.',
+            done: !!nitroLane?.readyAt || race?.winner === 'nitro',
+            active: racing && !nitroLane?.readyAt,
+          },
+          {
+            label: 'In-place CPU resize back to 250m (RESTARTS 0)',
+            detail: `After ${n.vpa.durationSeconds}s, VPA shrinks nitro's CPU request in-place without restarting the pod.`,
+            done: unboosted,
+            active: !!nitroLane?.readyAt && !unboosted && !!stockLane,
+          },
+        ]}
+      />
+
       <ControlGroup title="Race">
         <ActionButton action="nitro.race" accent={ACCENT} disabled={racing} label="Start race" className="text-[1.3rem]">
           🏁 Start race

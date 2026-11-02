@@ -6,12 +6,12 @@ import { ago } from '../lib/format';
 import { ClusterScene } from '../scene/ClusterScene';
 import { useArcade } from '../store';
 import type { ClimberState, Node, WorldState } from '../types';
-import { ActionButton, Badge, ControlGroup, CostMeter, Stat, Stopwatch, eventsSection, podTable, shortNodeName, useCabinetLayout } from './common';
+import { ActionButton, Badge, ControlGroup, CostMeter, MissionCard, Stat, Stopwatch, eventsSection, podTable, shortNodeName, useCabinetLayout } from './common';
 import type { CabinetModule, CabinetProps, HudSection } from './types';
 
-const ACCENT = '#f59e0b';
-const LOCK_COLOR = '#ef4444';
-const MAX_REPLICAS = 24;
+const ACCENT = '#4285f4';
+const LOCK_COLOR = '#ea4335';
+const MAX_REPLICAS = 32;
 const QUICK = [0, 6, 12, 24];
 
 /** List prices (USD/h, us-central1) used for the cost meter; Spot ≈ 35 % of list. */
@@ -122,7 +122,7 @@ function Padlock({ center, w, d }: { center: [number, number]; w: number; d: num
       </lineSegments>
       <pointLight position={[0, 2.5, 0]} color={LOCK_COLOR} intensity={5} distance={8} decay={2} />
       <Html position={[0, 1.6, 0]} center zIndexRange={[25, 0]} style={{ pointerEvents: 'none' }}>
-        <LockChip label="locked · reservations AnyThenFail" />
+        <LockChip label="locked · reservations Specific (arcade-locked)" />
       </Html>
     </group>
   );
@@ -159,9 +159,44 @@ function Controls({ world }: CabinetProps) {
 
   const podsOnRung = (idx: number) => c.rungs.find((r) => r.index === idx)?.pods ?? 0;
   const pending = world.pods.filter((p) => p.cabinet === 'climber' && !p.node && !p.deleting).length;
+  const rung1Pods = podsOnRung(1);
+  const fallbackPods = podsOnRung(2) + podsOnRung(3);
+
+  const everScaled = useRef(false);
+  const everLocked = useRef(false);
+  const everMigratedBack = useRef(false);
+  if (c.ready >= 6) everScaled.current = true;
+  if (locked || fallbackPods > 0) everLocked.current = true;
+  if (everLocked.current && !locked && rung1Pods > 0) everMigratedBack.current = true;
 
   return (
     <>
+      <MissionCard
+        accent={ACCENT}
+        goal="Scale a workload up a 3-rung ComputeClass priority ladder (n4d Spot → n4 Spot → n4 On-Demand), lock Rung #1 to force fallback, then unlock to watch activeMigration move pods back."
+        win="Fastest scale-up time (s) at the lowest $/h node cost"
+        steps={[
+          {
+            label: 'Scale replicas to ≥ 6',
+            detail: 'Triggers Node Pool Auto-Creation on Rung #1 (n4d Spot).',
+            done: everScaled.current || c.ready >= 6,
+            active: !everScaled.current && c.desired >= 6,
+          },
+          {
+            label: 'Lock Rung #1 (simulate Spot stockout)',
+            detail: 'Pins priority #1 to an unobtainable reservation so pods fall back to Rung #2.',
+            done: everLocked.current,
+            active: everScaled.current && !everLocked.current,
+          },
+          {
+            label: 'Unlock Rung #1 & watch active migration',
+            detail: 'optimizeRulePriority: true moves pods from Rung #2 back onto Rung #1.',
+            done: everMigratedBack.current,
+            active: everLocked.current && !everMigratedBack.current,
+          },
+        ]}
+      />
+
       <ControlGroup title="Scale Deployment/climber">
         <div className="flex items-end justify-between">
           <div className="font-mono text-[2.6rem] font-black leading-none" style={{ color: ACCENT }}>
@@ -205,27 +240,27 @@ function Controls({ world }: CabinetProps) {
             const isLocked = p.locked || (idx === 1 && locked);
             const pods = podsOnRung(idx);
             return (
-              <div key={idx} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${isLocked ? 'border-red-400/50 bg-red-500/10 text-red-100' : pods ? 'border-amber-400/40 bg-amber-500/10 text-amber-100' : 'border-line/70 bg-black/30 text-slate-300'}`}>
+              <div key={idx} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${isLocked ? 'border-[#ea4335]/60 bg-[#ea4335]/15 text-red-100' : pods ? 'border-[#4285f4]/50 bg-[#4285f4]/15 text-blue-100' : 'border-line/70 bg-black/30 text-slate-300'}`}>
                 <span className="w-5 text-center">{isLocked ? '🔒' : pods ? '✓' : '·'}</span>
                 <span className="text-slate-400">#{idx}</span>
                 <span className="font-bold">{p.machineFamily}</span>
-                <Badge tone={p.spot ? 'bg-amber-400/20 text-amber-200' : 'bg-sky-400/20 text-sky-200'}>{p.spot ? 'Spot' : 'on-demand'}</Badge>
-                {isLocked && <span className="text-[0.7rem] text-red-300">reservations.affinity: AnyThenFail</span>}
+                <Badge tone={p.spot ? 'bg-[#34a853]/25 text-[#81c995]' : 'bg-[#4285f4]/25 text-[#8ab4f8]'}>{p.spot ? 'Spot' : 'on-demand'}</Badge>
+                {isLocked && <span className="text-[0.7rem] text-red-300">Specific (arcade-locked)</span>}
                 <span className="ml-auto">
                   {pods} pod{pods === 1 ? '' : 's'}
                 </span>
               </div>
             );
           })}
-          {pending > 0 && <div className="text-[0.8rem] text-amber-300">⏳ {pending} pending — waiting for node pool auto-creation</div>}
+          {pending > 0 && <div className="text-[0.8rem] text-[#fbbc04]">⏳ {pending} pending — waiting for node pool auto-creation</div>}
         </div>
         <ActionButton action="climber.lock" body={{ locked: !locked }} accent={locked ? LOCK_COLOR : undefined} label={locked ? 'Unlock rung #1' : 'Lock rung #1'}>
           {locked ? '🔓 Unlock rung #1' : '🔒 Lock rung #1'}
         </ActionButton>
         <div className="text-[0.8rem] text-slate-400">
           {locked
-            ? 'Rung #1 is pinned to a non-existent reservation (AnyThenFail) → unobtainable. Active migration moves pods down to rung #2.'
-            : 'Locking patches priority #1 to reservations.affinity: AnyThenFail; pods climb back when unlocked (activeMigration.optimizeRulePriority).'}
+            ? 'Rung #1 is pinned to a non-existent reservation (arcade-locked) → unobtainable. Active migration moves pods down to rung #2.'
+            : 'Locking patches priority #1 to a Specific reservation (arcade-locked); pods climb back when unlocked (activeMigration.optimizeRulePriority).'}
         </div>
       </ControlGroup>
 
@@ -306,7 +341,7 @@ function hud(world: WorldState): HudSection[] {
       spec: {
         priorities: c.computeClass.priorities.map((p, i) =>
           p.locked || (i === 0 && c.computeClass.locked)
-            ? { machineFamily: p.machineFamily, reservations: { affinity: 'AnyThenFail', specific: [{ name: 'arcade-locked-rung' }] } }
+            ? { machineFamily: p.machineFamily, reservations: { affinity: 'Specific', specific: [{ name: 'arcade-locked' }] } }
             : { machineFamily: p.machineFamily, spot: p.spot },
         ),
         nodePoolAutoCreation: { enabled: true },

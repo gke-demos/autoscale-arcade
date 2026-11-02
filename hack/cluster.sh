@@ -121,6 +121,8 @@ install_addons() {
   git clone --depth 1 -q --branch "${POD_MIGRATION_REF}" https://github.com/gke-labs/pod-migration "${tmp}/pm"
   kubectl apply -f "${tmp}/pm/controller/config/crd/bases/"
   sed "s|<YOUR_CONTROLLER_IMAGE>|${POD_MIGRATION_IMAGE}|" "${tmp}/pm/controller/deploy.yaml" | kubectl apply -f -
+  kubectl patch deploy -n pod-migration-system pod-migration-controller --type=json \
+    -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--restore-stabilization-window=0s"}]' || true
   kubectl rollout status -n pod-migration-system deployment/pod-migration-controller --timeout=5m
   rm -rf "${tmp}"
 

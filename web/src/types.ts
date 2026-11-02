@@ -251,6 +251,7 @@ export interface CabinetMeta {
   title: string;
   subtitle: string;
   feature: string;
+  goal: string;
   namespace: string;
   scenario: string;
   accent: string; // hex colour
@@ -263,9 +264,10 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     title: 'Capacity Climber',
     subtitle: 'Custom Compute Classes',
     feature: 'ComputeClass priorities · node pool auto-creation · active migration',
+    goal: 'Scale across a 3-rung node priority ladder, survive a rung-1 outage, and auto-migrate back.',
     namespace: 'arcade-climber',
     scenario: 'climber',
-    accent: '#f59e0b',
+    accent: '#4285f4',
   },
   spot: {
     id: 'spot',
@@ -273,9 +275,10 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     title: 'Spot On',
     subtitle: 'Workload Class spot ratio',
     feature: 'WorkloadClass capacityStrategy · fallback · active reversion',
+    goal: 'Save 50%+ on Spot while surviving preemptions and stockouts with On-Demand fallback.',
     namespace: 'arcade-spot',
     scenario: 'spot',
-    accent: '#22d3ee',
+    accent: '#34a853',
   },
   teleporter: {
     id: 'teleporter',
@@ -283,9 +286,10 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     title: 'Pod Teleporter',
     subtitle: 'Live Pod Migration',
     feature: 'PodMigrationJob · gVisor snapshot / restore',
+    goal: 'Drag & drop a live stateful pet pod across nodes without losing its in-memory counter.',
     namespace: 'arcade-teleporter',
     scenario: 'teleporter',
-    accent: '#a78bfa',
+    accent: '#fbbc04',
   },
   absorber: {
     id: 'absorber',
@@ -293,9 +297,10 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     title: 'Shock Absorber',
     subtitle: 'Capacity Buffers',
     feature: 'CapacityBuffer active / standby headroom',
+    goal: 'Pre-warm ghost capacity so a +12 pod traffic burst becomes Ready in seconds.',
     namespace: 'arcade-absorber',
     scenario: 'absorber',
-    accent: '#34d399',
+    accent: '#4285f4',
   },
   lights: {
     id: 'lights',
@@ -303,9 +308,10 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     title: 'Lights Out',
     subtitle: 'Scale to zero',
     feature: 'HPA minReplicas: 0 · AutoscalingMetric',
+    goal: 'Drop coins to wake a zero-pod deployment from sleep, drain the queue, and scale back to 0.',
     namespace: 'arcade-lights',
     scenario: 'lights',
-    accent: '#fbbf24',
+    accent: '#fbbc04',
   },
   nitro: {
     id: 'nitro',
@@ -313,8 +319,9 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     title: 'Nitro',
     subtitle: 'CPU startup boost',
     feature: 'VPA startupBoost · in-place resize',
+    goal: 'Win the cold-start drag race with a 4× VPA CPU Startup Boost, then resize in-place with 0 restarts.',
     namespace: 'arcade-nitro',
     scenario: 'nitro',
-    accent: '#fb7185',
+    accent: '#ea4335',
   },
 };

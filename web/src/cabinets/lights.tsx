@@ -6,13 +6,13 @@ import { ago, durationShort } from '../lib/format';
 import { ClusterScene } from '../scene/ClusterScene';
 import type { IslandLayout, Layout } from '../scene/layout';
 import type { Node, Pod, WorldState } from '../types';
-import { ActionButton, Badge, ControlGroup, Stat, Stopwatch, eventsSection, podTable, useCabinetLayout, useNow } from './common';
+import { ActionButton, Badge, ControlGroup, MissionCard, Stat, Stopwatch, eventsSection, podTable, useCabinetLayout, useNow } from './common';
 import type { CabinetModule, CabinetProps, HudSection } from './types';
 
-const ACCENT = '#fbbf24';
-const COIN = '#facc15';
+const ACCENT = '#fbbc04';
+const COIN = '#fbbc04';
 const MAX_COINS = 60;
-const TARGET_AVG = 5;
+const TARGET_AVG = 2;
 
 function coinPods(world: WorldState): Pod[] {
   return world.pods.filter((p) => p.cabinet === 'lights' && p.workload === 'coin-worker');
@@ -125,8 +125,40 @@ function Controls({ world }: CabinetProps) {
   const pods = coinPods(world).filter((p) => !p.deleting);
   const lit = pods.filter((p) => p.ready).length;
   const since = lightsOnSince(world);
+
+  const everQueued = useRef(false);
+  const everWoke = useRef(false);
+  if (l.queueDepth > 0 || l.processed > 0) everQueued.current = true;
+  if (!l.hpa.scaledToZero || l.hpa.current > 0 || lit > 0) everWoke.current = true;
+
   return (
     <>
+      <MissionCard
+        accent={ACCENT}
+        goal="Wake a sleeping 0-replica deployment by dropping coins into the queue, watch native HPA scale workers 0 → N via Prometheus metrics to drain the coins, and let it scale back to 0."
+        win={`Coins drained (${l.processed}) with minimal lights-on worker time`}
+        steps={[
+          {
+            label: 'Insert coins into the queue',
+            detail: 'Pushes arcade_queue_depth > 0 (scraped by Managed Prometheus).',
+            done: everQueued.current,
+            active: !everQueued.current,
+          },
+          {
+            label: 'Wake workers from zero (0 → N)',
+            detail: 'HPA sees AutoscalingMetric/coin-queue > 0 and flips ScaledToZero=False.',
+            done: everWoke.current,
+            active: everQueued.current && !everWoke.current,
+          },
+          {
+            label: 'Drain the coin queue',
+            detail: 'Workers consume coins until queueDepth hits 0 so HPA can turn the lights back out.',
+            done: l.processed > 0 && l.queueDepth === 0,
+            active: l.queueDepth > 0,
+          },
+        ]}
+      />
+
       <ControlGroup title="Coin slot">
         <div className="grid grid-cols-2 gap-2">
           <ActionButton action="lights.coin" body={{ count: 1 }} accent={ACCENT} label="Insert coin" className="text-[1.2rem]">
@@ -243,7 +275,7 @@ function hud(world: WorldState): HudSection[] {
       title: 'AutoscalingMetric/coin-queue',
       items: [
         ['apiVersion', 'autoscaling.gke.io/v1beta1'],
-        ['source', 'pod · arcade-server /metrics'],
+        ['source', 'promql · Managed Prometheus'],
         ['metric', 'arcade_queue_depth'],
         ['external name', l.metricName],
         ['value', String(l.hpa.metricValue ?? '—'), l.queueDepth ? 'text-amber-200' : undefined],

@@ -62,12 +62,12 @@ export function Island({ island, showLabels = true }: { island: IslandLayout; sh
   return (
     <group position={[cx, 0, cz]}>
       <RoundedBox args={[island.w, 0.3, island.d]} radius={0.15} smoothness={3} position={[0, -0.45, 0]} receiveShadow>
-        <meshStandardMaterial color="#121a30" roughness={0.9} metalness={0.1} emissive={anyCreating ? CREATING_COLOR : '#0b1020'} emissiveIntensity={anyCreating ? 0.05 : 0.6} />
+        <meshStandardMaterial color="#202124" roughness={0.85} metalness={0.15} emissive={anyCreating ? CREATING_COLOR : '#131314'} emissiveIntensity={anyCreating ? 0.08 : 0.4} />
       </RoundedBox>
-      {/* neon edge */}
+      {/* subtle edge */}
       <mesh position={[0, -0.3, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[Math.max(island.w, island.d) * 0.02, Math.max(island.w, island.d) * 0.021, 4]} />
-        <meshBasicMaterial color="#1e293b" transparent opacity={0} />
+        <meshBasicMaterial color="#3c4043" transparent opacity={0} />
       </mesh>
       {showLabels && (
         <Html position={[0, -0.2, island.d / 2 + 0.35]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
@@ -119,11 +119,11 @@ export function NodeSlab({
       m.emissiveIntensity = 0.5 + 0.3 * Math.sin(t * 6);
       m.opacity = n.deleting ? 0.25 + 0.2 * Math.sin(t * 3) : 0.6;
     } else if (n.suspended) {
-      m.emissive.set('#0ea5e9');
+      m.emissive.set('#4285f4');
       m.emissiveIntensity = 0.08;
       m.opacity = 0.35;
     } else {
-      tmpColor.set(highlight === 'target' ? '#e9d5ff' : highlight === 'valid' ? '#a78bfa' : highlight === 'origin' ? '#facc15' : base);
+      tmpColor.set(highlight === 'target' ? '#81c995' : highlight === 'valid' ? '#34a853' : highlight === 'origin' ? '#fbbc04' : base);
       m.emissive.lerp(tmpColor, 0.15);
       const target = highlight === 'target' ? 0.6 : highlight === 'valid' ? 0.3 + 0.12 * Math.sin(t * 5) : highlight === 'origin' ? 0.4 : selected ? 0.7 : 0.4;
       m.emissiveIntensity += (target - m.emissiveIntensity) * 0.2;
@@ -165,20 +165,20 @@ export function NodeSlab({
       {/* utilisation bar on the front face */}
       <mesh position={[-SLAB.w / 2 + (SLAB.w * util) / 2, -SLAB.h / 2 + 0.04, SLAB.d / 2 + 0.01]}>
         <planeGeometry args={[Math.max(0.01, SLAB.w * util), 0.07]} />
-        <meshBasicMaterial color={util > 0.85 ? '#f87171' : '#22d3ee'} />
+        <meshBasicMaterial color={util > 0.85 ? '#ea4335' : '#34a853'} />
       </mesh>
       {/* highlight ring */}
       <mesh ref={ringRef} position={[0, -SLAB.h / 2 + 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <ringGeometry args={[SLAB.w * 0.68, SLAB.w * 0.74, 48]} />
-        <meshBasicMaterial color={highlight === 'target' ? '#ffffff' : '#a78bfa'} transparent opacity={0.9} side={THREE.DoubleSide} />
+        <meshBasicMaterial color={highlight === 'target' ? '#ffffff' : '#34a853'} transparent opacity={0.9} side={THREE.DoubleSide} />
       </mesh>
       {showLabel && (
         <Html position={[0, SLAB.h / 2 + 0.05, SLAB.d / 2 - 0.25]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="flex items-center gap-1 whitespace-nowrap rounded-md bg-black/55 px-1.5 py-0.5 font-mono text-[0.62rem] text-slate-200">
+          <div className="flex items-center gap-1 whitespace-nowrap rounded-md bg-black/70 px-1.5 py-0.5 font-mono text-[0.62rem] text-slate-200">
             {n.suspended && <span title="Suspended">❄</span>}
             {n.creating && <span className="text-amber-300 animate-blink">●</span>}
             {draining && <span className="text-red-400">⛔</span>}
-            {n.gvisor && <span className="text-violet-300">⬡</span>}
+            {n.gvisor && <span className="text-yellow-300">⬡</span>}
             <span>{shortNode(n.name)}</span>
             <span className="text-slate-400">{n.machineType}</span>
             {n.spot && <span className="text-amber-200">spot</span>}

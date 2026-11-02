@@ -87,14 +87,15 @@ function ControlsPanel({ id, world }: { id: CabinetId; world: WorldState }) {
   const mod = cabinets[id];
   const meta = CABINETS[id];
   return (
-    <section className="panel pointer-events-auto absolute bottom-0 left-0 top-0 flex w-[24rem] max-w-[34vw] flex-col overflow-hidden" style={{ borderColor: `${meta.accent}55` }}>
+    <section className="panel pointer-events-auto absolute bottom-0 left-0 top-0 flex w-[25rem] max-w-[35vw] flex-col overflow-hidden" style={{ borderColor: `${meta.accent}66` }}>
+      <div className="google-bar h-[3px] w-full shrink-0" />
       <div className="flex items-baseline gap-2 border-b border-line/80 px-4 py-2">
         <span className="text-[1.2rem] font-black tracking-wide" style={{ color: meta.accent }}>
           {meta.title}
         </span>
-        <span className="font-mono text-[0.65rem] text-slate-400">{meta.namespace}</span>
+        <span className="font-mono text-[0.65rem] text-[#9aa0a6]">{meta.namespace}</span>
       </div>
-      <div className="scrollbar-thin flex flex-1 flex-col gap-5 overflow-y-auto px-4 py-3">
+      <div className="scrollbar-thin flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
         <mod.Controls world={world} />
       </div>
     </section>
@@ -105,10 +106,15 @@ function Connecting() {
   const connected = useArcade((s) => s.connected);
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-4">
-      <div className="text-[3rem] font-black tracking-[0.3em] text-neon neon-text">AUTOSCALE ARCADE</div>
-      <div className="font-mono text-slate-400">{connected ? 'waiting for the first WorldState snapshot…' : 'connecting to arcade-server…'}</div>
-      <div className="h-1 w-[20rem] overflow-hidden rounded bg-white/10">
-        <div className="h-full w-1/3 animate-marquee bg-neon" />
+      <div className="text-[3rem] font-black tracking-[0.22em] text-white">
+        <span className="text-[#4285f4]">G</span>
+        <span className="text-[#ea4335]">K</span>
+        <span className="text-[#fbbc04]">E</span>
+        <span className="ml-3 text-[#e8eaed]">AUTOSCALE ARCADE</span>
+      </div>
+      <div className="font-mono text-[#9aa0a6]">{connected ? 'waiting for the first WorldState snapshot…' : 'connecting to arcade-server…'}</div>
+      <div className="h-1.5 w-[20rem] overflow-hidden rounded bg-white/10">
+        <div className="google-bar h-full w-1/2 animate-marquee" />
       </div>
     </div>
   );

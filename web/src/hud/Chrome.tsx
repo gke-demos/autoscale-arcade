@@ -16,12 +16,17 @@ export function TopBar({ world }: { world?: WorldState }) {
   return (
     <header className="pointer-events-auto flex items-center gap-3">
       <button className="btn btn-ghost !min-w-0 gap-3 px-4" onClick={() => setView('lobby')} title="Lobby (0 / Esc)">
-        <span className="text-[1.5rem]">🕹️</span>
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#303134] text-[1.25rem]">🕹️</span>
         <span className="flex flex-col items-start leading-none">
-          <span className="font-display text-[1.15rem] font-black tracking-[0.18em] text-neon neon-text">AUTOSCALE ARCADE</span>
-          <span className="font-mono text-[0.65rem] text-slate-400">
+          <span className="font-display text-[1.1rem] font-black tracking-[0.14em] text-white">
+            <span className="text-[#4285f4]">G</span>
+            <span className="text-[#ea4335]">K</span>
+            <span className="text-[#fbbc04]">E</span>
+            <span className="ml-1.5 text-[#e8eaed]">AUTOSCALE ARCADE</span>
+          </span>
+          <span className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">
             {world ? `${world.cluster.name} · GKE ${world.cluster.version}` : 'connecting…'}
-            <span className={`ml-2 ${connected ? 'text-emerald-400' : 'text-red-400 animate-blink'}`}>●</span>
+            <span className={`ml-2 ${connected ? 'text-[#34a853]' : 'text-[#ea4335] animate-blink'}`}>●</span>
           </span>
         </span>
       </button>
@@ -82,17 +87,17 @@ export function BottomBar({ world }: { world: WorldState }) {
   const meta = view === 'lobby' ? undefined : CABINETS[view];
   const Status = meta ? cabinets[meta.id].Status : undefined;
   const runningHere = sc.running && (view === 'lobby' || sc.cabinet === view);
-  const accent = meta?.accent ?? '#22d3ee';
+  const accent = meta?.accent ?? '#4285f4';
 
   return (
     <footer className="panel pointer-events-auto flex items-center gap-3 px-3 py-2">
       {sc.running ? (
-        <button className="btn btn-accent !min-w-0" style={{ '--btn-accent': '#f87171' } as React.CSSProperties} onClick={() => act('scenario.stop', {}, { label: 'Stop' })} disabled={busy['Stop']}>
+        <button className="btn btn-accent !min-w-0" style={{ '--btn-accent': '#ea4335' } as React.CSSProperties} onClick={() => act('scenario.stop', {}, { label: 'Stop' })} disabled={busy['Stop']}>
           ■ Stop
         </button>
       ) : (
         <button className="btn btn-accent !min-w-0" style={{ '--btn-accent': accent } as React.CSSProperties} onClick={() => act('scenario.run', { name: meta ? meta.scenario : 'all' }, { label: 'Auto-run' })} disabled={busy['Auto-run']} title="Space">
-          ▶ {meta ? 'Auto-run' : 'Insert coin — play all'}
+          ▶ {meta ? 'Auto-run demo' : 'Insert coin — play all'}
         </button>
       )}
       {!sc.running && meta && (

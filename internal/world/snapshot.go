@@ -512,9 +512,12 @@ func isArcadePod(p *corev1.Pod) bool {
 func (w *World) MigrationJobs() []MigrationJob { return w.migrationJobs() }
 
 func (w *World) migrationJobs() []MigrationJob {
+	ns := Namespace(CabinetTeleporter)
+	petPod := w.Pod(ns, "pet-0")
+	petMem, petConnected := w.Memory.Pet()
 	var out []MigrationJob
 	for _, u := range w.listDyn(GVRPodMigrationJob) {
-		if u.GetNamespace() != Namespace(CabinetTeleporter) {
+		if u.GetNamespace() != ns {
 			continue
 		}
 		j := MigrationJob{
@@ -536,6 +539,51 @@ func (w *World) migrationJobs() []MigrationJob {
 		}
 		_, reason, _ := condition(u, "Restored")
 		j.RestoredReason = reason
+		// Promote Restoring -> Succeeded as soon as the replacement pet-0 pod is
+		// Ready on the destination node or pet telemetry has reported a restore
+		// since the migration started (without waiting for the controller's
+		// default 30s restore-stabilization-window).
+		if j.Phase == "Restoring" {
+			started := parseTime(j.StartedAt)
+			var readyAt time.Time
+			podReady := false
+			if petPod != nil && petPod.DeletionTimestamp == nil &&
+				petPod.Spec.NodeName != "" && petPod.Spec.NodeName != j.OriginNode &&
+				string(petPod.UID) != j.TargetUID {
+				for _, c := range petPod.Status.Conditions {
+					if c.Type == corev1.PodReady && c.Status == corev1.ConditionTrue {
+						podReady = true
+						readyAt = c.LastTransitionTime.Time
+						break
+					}
+				}
+			}
+			petRestored := petConnected && petMem != nil && petMem.RestoredAt != "" &&
+				!started.IsZero() && parseTime(petMem.RestoredAt).After(started)
+			if podReady || petRestored {
+				j.Phase = "Succeeded"
+				if j.RestoredReason == "" {
+					j.RestoredReason = "RestoreInferred"
+				}
+				if petPod != nil && string(petPod.UID) != j.TargetUID {
+					if j.RestoredPod == "" {
+						j.RestoredPod = petPod.Name
+					}
+					if j.RestoredUID == "" {
+						j.RestoredUID = string(petPod.UID)
+					}
+				}
+				if j.CompletedAt == "" {
+					if petRestored {
+						j.CompletedAt = petMem.RestoredAt
+					} else if !readyAt.IsZero() {
+						j.CompletedAt = rfc3339(readyAt)
+					} else {
+						j.CompletedAt = rfc3339(time.Now())
+					}
+				}
+			}
+		}
 		out = append(out, j)
 	}
 	sort.Slice(out, func(i, j int) bool {

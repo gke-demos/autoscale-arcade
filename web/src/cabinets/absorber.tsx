@@ -5,10 +5,10 @@ import { ClusterScene } from '../scene/ClusterScene';
 import { SLAB, defaultGroupLabel } from '../scene/layout';
 import { useArcade } from '../store';
 import type { AbsorberPreset, Node, Pod, WorldState } from '../types';
-import { ActionButton, Badge, ControlGroup, CostMeter, Stat, Stopwatch, eventsSection, nodeTable, podTable, useCabinetLayout, useNow } from './common';
+import { ActionButton, Badge, ControlGroup, CostMeter, MissionCard, Stat, Stopwatch, eventsSection, nodeTable, podTable, useCabinetLayout, useNow } from './common';
 import type { CabinetModule, CabinetProps, HudSection } from './types';
 
-const ACCENT = '#34d399';
+const ACCENT = '#4285f4';
 const BURST = 12;
 const CC = 'arcade-absorber';
 
@@ -110,15 +110,44 @@ function Controls({ world }: CabinetProps) {
 
   const bars = a.burst.perPodReadyMs.length ? [...a.burst.perPodReadyMs].sort((x, y) => x - y).map((ms, i) => ({ name: `#${i + 1}`, ms, ready: true })) : live;
   const maxMs = Math.max(1000, ...bars.map((b) => b.ms));
+  const ghosts = ghostPods(world).length;
+  const hasBuffer = a.preset !== 'none';
+  const burstDone = a.burst.desired > 0 && a.burst.ready >= a.burst.desired;
 
   return (
     <>
+      <MissionCard
+        accent={ACCENT}
+        goal="Pre-warm ghost capacity with a CapacityBuffer so a sudden +12 pod traffic spike snaps into Ready in seconds instead of waiting ~50s for cold node scale-up."
+        win="Fastest burst → all 12 pods Ready time (s) vs. headroom $/h"
+        steps={[
+          {
+            label: 'Pick a CapacityBuffer preset (Active 4/8 or Standby 8)',
+            detail: 'Reserves warm ghost pod slots (translucent blue wireframes) on the cluster.',
+            done: hasBuffer,
+            active: !hasBuffer && a.burst.desired === 0,
+          },
+          {
+            label: `Fire burst +${BURST}`,
+            detail: 'Launches 12 burst-worker pods that immediately claim the ghost headroom.',
+            done: a.burst.desired > 0,
+            active: hasBuffer && a.burst.desired === 0,
+          },
+          {
+            label: 'All burst pods reach Ready=True',
+            detail: 'Compare your stopwatch score with a buffer (~3s) vs. None (~50s)!',
+            done: burstDone,
+            active: bursting,
+          },
+        ]}
+      />
+
       <ControlGroup title="1 · Pick a CapacityBuffer preset">
         <div className="grid grid-cols-2 gap-2">
           {PRESETS.map((p) => (
             <ActionButton key={p.id} action="absorber.preset" body={{ preset: p.id }} label={`Buffer ${p.label}`} accent={a.preset === p.id ? ACCENT : undefined} className="flex-col gap-0! leading-tight">
               <span>{p.label}</span>
-              <span className={`text-[0.65rem] font-normal ${a.preset === p.id ? 'text-emerald-950' : 'text-slate-400'}`}>{p.sub}</span>
+              <span className={`text-[0.65rem] font-normal ${a.preset === p.id ? 'text-[#131314]/80' : 'text-slate-400'}`}>{p.sub}</span>
             </ActionButton>
           ))}
         </div>
@@ -138,15 +167,15 @@ function Controls({ world }: CabinetProps) {
                   <td className="px-2 py-1">{b.strategy === 'standby' ? 'standby ❄' : b.strategy}</td>
                   <td className="px-2 py-1">{b.replicas}</td>
                   <td className="px-2 py-1">{b.statusReplicas}</td>
-                  <td className="px-2 py-1">{b.replicas ? <Badge tone={b.ready ? 'bg-emerald-500/20 text-emerald-200' : 'bg-amber-500/20 text-amber-200'}>{b.ready ? 'True' : 'False'}</Badge> : '—'}</td>
-                  <td className="px-2 py-1">{b.limitedByQuota ? <Badge tone="bg-red-500/20 text-red-200">True</Badge> : 'False'}</td>
+                  <td className="px-2 py-1">{b.replicas ? <Badge tone={b.ready ? 'bg-[#34a853]/25 text-[#81c995]' : 'bg-[#fbbc04]/25 text-[#fde293]'}>{b.ready ? 'True' : 'False'}</Badge> : '—'}</td>
+                  <td className="px-2 py-1">{b.limitedByQuota ? <Badge tone="bg-[#ea4335]/25 text-red-200">True</Badge> : 'False'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <div className="flex flex-wrap gap-2">
-          <CostMeter perHour={a.headroomCostPerHour} label="headroom $/h" sub={ghostPods(world).length ? `${ghostPods(world).length} ghost pods reserved` : 'nothing reserved'} />
+          <CostMeter perHour={a.headroomCostPerHour} label="headroom $/h" sub={ghosts ? `${ghosts} ghost pods reserved` : 'nothing reserved'} />
         </div>
       </ControlGroup>
 

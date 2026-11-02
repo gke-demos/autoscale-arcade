@@ -7,11 +7,11 @@ import { Beam, ClusterScene, type NodeHighlight } from '../scene/ClusterScene';
 import { SLAB } from '../scene/layout';
 import { usePodDrag } from '../scene/usePodDrag';
 import { useArcade } from '../store';
-import type { Node, Pod, WorldState } from '../types';
-import { ActionButton, ControlGroup, Stat, eventsSection, nodeTable, podTable, shortNodeName, useCabinetLayout, useNow } from './common';
+import type { Node, PetState, Pod, WorldState } from '../types';
+import { ActionButton, ControlGroup, MissionCard, Stat, eventsSection, nodeTable, podTable, shortNodeName, useCabinetLayout, useNow } from './common';
 import type { CabinetModule, CabinetProps } from './types';
 
-const ACCENT = '#a78bfa';
+const ACCENT = '#fbbc04';
 const ACTIVE_PHASES = ['Pending', 'Snapshotting', 'Evicting', 'Restoring'];
 
 function petPod(world: WorldState): Pod | undefined {
@@ -23,6 +23,22 @@ function currentJob(world: WorldState) {
   return world.cabinets.teleporter.jobs[0];
 }
 
+/**
+ * Returns false as soon as the replacement pet-0 pod is Ready on a destination
+ * node or pet telemetry has resumed after job.startedAt, even if the controller
+ * hasn't flipped PodMigrationJob.status.phase from Restoring to Succeeded yet.
+ */
+function isJobMigrating(world: WorldState, pet?: PetState): boolean {
+  const job = currentJob(world);
+  if (!job || !ACTIVE_PHASES.includes(job.phase)) return false;
+  if (job.phase === 'Restoring') {
+    const p = petPod(world);
+    if (p && p.ready && !p.deleting && p.node && p.node !== job.originNode) return false;
+    if (pet?.restoredAt && Date.parse(pet.restoredAt) > Date.parse(job.startedAt)) return false;
+  }
+  return true;
+}
+
 // ---- 3D ---------------------------------------------------------------------
 
 function Scene({ world }: CabinetProps) {
@@ -30,9 +46,10 @@ function Scene({ world }: CabinetProps) {
   const layout = useCabinetLayout(world, 'teleporter', { extraNodes: (n) => n.gvisor });
   const act = useArcade((s) => s.act);
   const drag = useArcade((s) => s.drag);
+  const petTelemetry = useArcade((s) => s.pet);
   const pet = petPod(world);
   const job = currentJob(world);
-  const migrating = !!job && ACTIVE_PHASES.includes(job.phase);
+  const migrating = isJobMigrating(world, petTelemetry);
   const gvisor = new Set(t.gvisorNodes);
 
   const canDrag = useCallback((p: Pod) => p.workload === 'pet' && !migrating && p.ready, [migrating]);
@@ -78,10 +95,10 @@ function Scene({ world }: CabinetProps) {
       <ClusterScene layout={layout} draggable={canDrag} onPodPointerDown={onPodPointerDown} nodeHighlight={nodeHighlight} hiddenPod={drag?.podUid} />
       {drag && <DragGhost />}
       {beamFrom && cloud && <Beam from={beamFrom} to={cloud} active={migrating && !restoring} color={ACCENT} />}
-      {cloud && beamTo && <Beam from={cloud} to={beamTo} active={migrating && restoring} color="#67e8f9" />}
+      {cloud && beamTo && <Beam from={cloud} to={beamTo} active={migrating && restoring} color="#34a853" />}
       {cloud && migrating && (
         <Html position={[cloud[0], cloud[1] + 0.6, cloud[2]]} center zIndexRange={[30, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="whitespace-nowrap rounded-md bg-black/60 px-2 py-0.5 font-mono text-[0.65rem] text-violet-200">☁ PodSnapshot {job?.snapshot ? `· ${job.snapshot}` : '· gs://…/snapshots'}</div>
+          <div className="whitespace-nowrap rounded-md bg-black/75 px-2 py-0.5 font-mono text-[0.65rem] text-[#fde293]">☁ PodSnapshot {job?.snapshot ? `· ${job.snapshot}` : '· gs://…/snapshots'}</div>
         </Html>
       )}
       {beamFrom && migrating && (
@@ -113,7 +130,7 @@ function DragGhost() {
       </mesh>
       <pointLight color={ACCENT} intensity={6} distance={6} />
       <Html position={[0, 1.1, 0]} center zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
-        <div className="whitespace-nowrap rounded-full border border-violet-300/60 bg-black/70 px-3 py-1 font-mono text-[0.75rem] text-violet-100">drop on a gVisor node ⬡</div>
+        <div className="whitespace-nowrap rounded-full border border-[#fbbc04]/60 bg-black/80 px-3 py-1 font-mono text-[0.75rem] text-[#fde293]">drop on a gVisor node ⬡</div>
       </Html>
     </group>
   );
@@ -131,9 +148,9 @@ function PetHalo({ world }: { world: WorldState }) {
 function PhaseChip({ phase }: { phase: string }) {
   const idx = ACTIVE_PHASES.indexOf(phase);
   return (
-    <div className="flex items-center gap-2 rounded-full border border-violet-300/50 bg-black/75 px-3 py-1 font-mono text-[0.8rem] text-violet-100 shadow-[0_0_20px_rgba(167,139,250,0.5)]">
+    <div className="flex items-center gap-2 rounded-full border border-[#fbbc04]/60 bg-black/80 px-3 py-1 font-mono text-[0.8rem] text-[#fde293] shadow-[0_0_20px_rgba(251,188,4,0.45)]">
       {['Snapshotting', 'Evicting', 'Restoring'].map((p, i) => (
-        <span key={p} className={`${i + 1 <= idx ? 'text-violet-200' : 'text-slate-500'} ${p === phase ? 'animate-blink font-bold text-white' : ''}`}>
+        <span key={p} className={`${i + 1 <= idx ? 'text-[#fde293]' : 'text-slate-500'} ${p === phase ? 'animate-blink font-bold text-white' : ''}`}>
           {p}
           {i < 2 && <span className="ml-2 text-slate-500">→</span>}
         </span>
@@ -150,7 +167,7 @@ function Controls({ world }: CabinetProps) {
   const petSeenAt = useArcade((s) => s.petSeenAt);
   const now = useNow(100);
   const job = currentJob(world);
-  const migrating = !!job && ACTIVE_PHASES.includes(job.phase);
+  const migrating = isJobMigrating(world, pet);
   const live = pet && now - petSeenAt < 1500;
   const lastTickAt = useRef(0);
   const lastTicks = useRef(0);
@@ -171,36 +188,67 @@ function Controls({ world }: CabinetProps) {
     lastLM.current = { at: lm?.at, init: true };
   }, [t.lastMigration, setPrompt]);
 
+  const everMigrated = useRef(false);
+  if (t.lastMigration && (t.lastMigration.restored === 'verified' || t.lastMigration.restored === 'inferred')) {
+    everMigrated.current = true;
+  }
+
   return (
     <>
+      <MissionCard
+        accent={ACCENT}
+        goal="Teleport the stateful pet-0 pod across gVisor nodes without losing its in-memory counter, score, or bouncing ball trajectory!"
+        win="Shortest migration downtime (ms) with in-memory ticks & lives preserved"
+        steps={[
+          {
+            label: 'Watch pet-0 accumulate in-memory state',
+            detail: `Ticks (${pet ? pet.ticks.toLocaleString() : '—'}) & ball velocity live purely in RAM — a normal restart wipes them to 0.`,
+            done: (pet?.ticks ?? 0) >= 20,
+            active: (pet?.ticks ?? 0) < 20,
+          },
+          {
+            label: 'Drag & drop pet-0 onto another ⬡ gVisor node',
+            detail: 'Or press Random teleport to trigger a GKE Pod Snapshot to GCS.',
+            done: migrating || everMigrated.current || (pet?.lives ?? 1) > 1,
+            active: !migrating && !everMigrated.current && (pet?.ticks ?? 0) >= 20,
+          },
+          {
+            label: 'Verify memory survived on the new node',
+            detail: 'pet-0 resumes from its exact tick count and gains a ♥ life!',
+            done: everMigrated.current || (pet?.lives ?? 1) > 1,
+            active: migrating,
+          },
+        ]}
+      />
+
       <ControlGroup title="Arcade pet · pet-0 (in-memory state)">
         <div className="flex flex-wrap gap-2">
-          <Stat label="ticks" value={<span className={migrating || !live ? 'text-amber-300' : 'text-violet-200'}>{pet ? pet.ticks.toLocaleString() : '—'}</span>} sub={live ? '10/s live' : 'no telemetry'} />
+          <Stat label="ticks" value={<span className={migrating || !live ? 'text-[#fbbc04]' : 'text-[#81c995]'}>{pet ? pet.ticks.toLocaleString() : '—'}</span>} sub={live ? '10/s live' : 'no telemetry'} />
           <Stat label="score" value={pet?.score.toLocaleString() ?? '—'} />
-          <Stat label="lives" value={pet ? '♥'.repeat(Math.min(pet.lives, 8)) + (pet.lives > 8 ? `+${pet.lives - 8}` : '') : '—'} tone="text-pink-300" sub="migrations survived" />
+          <Stat label="lives" value={pet ? '♥'.repeat(Math.min(pet.lives, 8)) + (pet.lives > 8 ? `+${pet.lives - 8}` : '') : '—'} tone="text-[#ea4335]" sub="migrations survived" />
           <Stat label="uptime" value={pet ? stopwatch(pet.uptimeSec * 1000).slice(0, 5) : '—'} sub={pet ? `since ${ago(pet.bornAt, now)} ago` : undefined} />
         </div>
         <PetBall />
         <div className="font-mono text-[0.75rem] text-slate-400">
           on <span className="text-slate-100">{t.pet.node ? shortNodeName(t.pet.node) : '—'}</span>
-          {t.pet.connected ? <span className="ml-2 text-emerald-300">● connected</span> : <span className="ml-2 text-amber-300">○ disconnected</span>}
+          {t.pet.connected ? <span className="ml-2 text-[#34a853]">● connected</span> : <span className="ml-2 text-[#fbbc04]">○ disconnected</span>}
         </div>
       </ControlGroup>
 
       <ControlGroup title="Teleport">
-        <div className="rounded-xl border border-violet-400/30 bg-violet-500/10 p-3 text-[0.9rem] text-violet-100">
-          <b>Drag the glowing pet cube</b> onto another ⬡ gVisor node slab. The server pins the StatefulSet to that node and evicts <code>pet-0</code>; the pod-migration webhook snapshots and restores it with its memory intact.
+        <div className="rounded-xl border border-[#fbbc04]/40 bg-[#fbbc04]/10 p-3 text-[0.85rem] text-[#fde293]">
+          <b>Drag the glowing yellow pet cube</b> onto another ⬡ gVisor node slab. The server pins the StatefulSet to that node and evicts <code>pet-0</code>; the pod-migration webhook checkpoints RAM to GCS and restores it on the target node.
         </div>
         <ActionButton action="teleporter.random" accent={ACCENT} disabled={migrating || t.gvisorNodes.length < 2} label="Random teleport">
           🎲 Random teleport
         </ActionButton>
         <div className="flex flex-wrap gap-2">
-          <Stopwatch2 job={job} migrating={migrating} frozenMs={frozenMs} />
+          <Stopwatch2 job={job} migrating={migrating} frozenMs={frozenMs} pet={pet} />
           {t.lastMigration && (
             <Stat
               label="last downtime"
               value={`${t.lastMigration.downtimeMs} ms`}
-              tone={t.lastMigration.restored === 'verified' || t.lastMigration.restored === 'inferred' ? 'text-lime-300' : 'text-red-300'}
+              tone={t.lastMigration.restored === 'verified' || t.lastMigration.restored === 'inferred' ? 'text-[#34a853]' : 'text-[#ea4335]'}
               sub={`${shortNodeName(t.lastMigration.from)} → ${shortNodeName(t.lastMigration.to)} · Restore${t.lastMigration.restored === 'verified' ? 'Verified' : t.lastMigration.restored === 'inferred' ? 'Inferred' : ` ${t.lastMigration.restored}`}`}
             />
           )}
@@ -211,40 +259,51 @@ function Controls({ world }: CabinetProps) {
       </ControlGroup>
 
       <ControlGroup title="PodMigrationJob">
-        {job ? <JobTimeline job={job} now={now} /> : <div className="text-[0.85rem] text-slate-400">No migration yet.</div>}
+        {job ? <JobTimeline job={job} now={now} migrating={migrating} /> : <div className="text-[0.85rem] text-slate-400">No migration yet.</div>}
       </ControlGroup>
     </>
   );
 }
 
-function Stopwatch2({ job, migrating, frozenMs }: { job?: WorldState['cabinets']['teleporter']['jobs'][number]; migrating: boolean; frozenMs: number }) {
+function Stopwatch2({ job, migrating, frozenMs, pet }: { job?: WorldState['cabinets']['teleporter']['jobs'][number]; migrating: boolean; frozenMs: number; pet?: PetState }) {
   const now = useNow(100);
   const start = job?.snapshottingAt ?? job?.startedAt;
-  const ms = migrating && start ? now - Date.parse(start) : job?.completedAt && start ? Date.parse(job.completedAt) - Date.parse(start) : 0;
-  return <Stat label="downtime stopwatch" value={<span className={migrating ? 'text-amber-300' : 'text-lime-300'}>{stopwatch(migrating ? Math.max(ms, frozenMs) : ms)}</span>} sub={migrating ? (job?.phase ?? 'migrating') : job ? job.phase : 'idle'} />;
+  const startMs = start ? Date.parse(start) : undefined;
+  const restoredMs = pet?.restoredAt ? Date.parse(pet.restoredAt) : undefined;
+  const completedMs = job?.completedAt ? Date.parse(job.completedAt) : undefined;
+  const endMs = restoredMs && startMs && restoredMs > startMs ? restoredMs : completedMs;
+  const ms = migrating && startMs ? now - startMs : endMs && startMs ? endMs - startMs : 0;
+  return (
+    <Stat
+      label="downtime stopwatch"
+      value={<span className={migrating ? 'text-[#fbbc04]' : 'text-[#34a853]'}>{stopwatch(migrating ? Math.max(ms, frozenMs) : ms)}</span>}
+      sub={migrating ? (job?.phase ?? 'migrating') : job ? 'Succeeded' : 'idle'}
+    />
+  );
 }
 
-function JobTimeline({ job, now }: { job: WorldState['cabinets']['teleporter']['jobs'][number]; now: number }) {
+function JobTimeline({ job, now, migrating }: { job: WorldState['cabinets']['teleporter']['jobs'][number]; now: number; migrating: boolean }) {
+  const effectivePhase = !migrating && job.phase === 'Restoring' ? 'Succeeded' : job.phase;
   const steps: [string, string | undefined][] = [
     ['Started', job.startedAt],
     ['Snapshotting', job.snapshottingAt],
     ['Evicting', job.evictingAt],
     ['Restoring', job.restoringAt],
-    [job.phase === 'Failed' ? 'Failed' : 'Completed', job.completedAt],
+    [effectivePhase === 'Failed' ? 'Failed' : 'Completed', job.completedAt ?? (!migrating ? new Date(now).toISOString() : undefined)],
   ];
   const t0 = Date.parse(job.startedAt);
   return (
     <div className="flex flex-col gap-1 font-mono text-[0.78rem]">
       <div className="flex justify-between text-slate-400">
         <span>{job.name}</span>
-        <span className={job.phase === 'Succeeded' ? 'text-lime-300' : job.phase === 'Failed' ? 'text-red-300' : 'text-amber-300'}>{job.phase}</span>
+        <span className={effectivePhase === 'Succeeded' ? 'text-[#34a853]' : effectivePhase === 'Failed' ? 'text-[#ea4335]' : 'text-[#fbbc04]'}>{effectivePhase}</span>
       </div>
       {steps.map(([label, at], i) => {
         const done = !!at;
-        const active = !done && steps[i - 1]?.[1] && ACTIVE_PHASES.includes(job.phase);
+        const active = !done && steps[i - 1]?.[1] && ACTIVE_PHASES.includes(effectivePhase);
         return (
           <div key={label} className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${done ? 'bg-violet-300' : active ? 'bg-amber-300 animate-blink' : 'bg-slate-600'}`} />
+            <span className={`h-2 w-2 rounded-full ${done ? 'bg-[#34a853]' : active ? 'bg-[#fbbc04] animate-blink' : 'bg-slate-600'}`} />
             <span className={done ? 'text-slate-100' : 'text-slate-500'}>{label}</span>
             <span className="ml-auto text-slate-400">{at ? `+${secs(Date.parse(at) - t0)}` : active ? `+${secs(now - t0)}` : ''}</span>
           </div>
@@ -269,7 +328,7 @@ function PetBall() {
         const w = c.width;
         const h = c.height;
         ctx.clearRect(0, 0, w, h);
-        ctx.strokeStyle = 'rgba(167,139,250,0.35)';
+        ctx.strokeStyle = 'rgba(251,188,4,0.35)';
         ctx.lineWidth = 2;
         ctx.strokeRect(1, 1, w - 2, h - 2);
         if (pet) {
@@ -282,8 +341,8 @@ function PetBall() {
           const by = (pet.ball.y / b.h) * h;
           const g = ctx.createRadialGradient(bx, by, 1, bx, by, 12);
           g.addColorStop(0, '#fff');
-          g.addColorStop(0.4, '#c4b5fd');
-          g.addColorStop(1, 'rgba(167,139,250,0)');
+          g.addColorStop(0.4, '#fbbc04');
+          g.addColorStop(1, 'rgba(251,188,4,0)');
           ctx.fillStyle = g;
           ctx.beginPath();
           ctx.arc(bx, by, 12, 0, Math.PI * 2);

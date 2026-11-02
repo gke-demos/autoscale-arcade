@@ -3,12 +3,12 @@ import { ago } from '../lib/format';
 import { ClusterScene } from '../scene/ClusterScene';
 import { useArcade } from '../store';
 import type { Node, Pod, WorldState } from '../types';
-import { ActionButton, Badge, ControlGroup, CostMeter, Stat, eventsSection, shortNodeName, useCabinetLayout } from './common';
+import { ActionButton, Badge, ControlGroup, CostMeter, MissionCard, Stat, eventsSection, shortNodeName, useCabinetLayout } from './common';
 import type { CabinetModule, CabinetProps, HudSection } from './types';
 
-const ACCENT = '#22d3ee';
-const FALLBACK_COLOR = '#fb923c';
-const STOCKOUT_COLOR = '#ef4444';
+const ACCENT = '#34a853';
+const FALLBACK_COLOR = '#fbbc04';
+const STOCKOUT_COLOR = '#ea4335';
 const PRESETS = [0, 20, 50, 80, 100];
 
 // ---- data helpers ---------------------------------------------------------
@@ -17,7 +17,7 @@ function checkoutPods(world: WorldState): Pod[] {
   return world.pods.filter((p) => p.cabinet === 'spot');
 }
 function isSpotNode(n: Node) {
-  return n.computeClass === 'arcade-spot';
+  return n.computeClass === 'arcade-spot' || n.pool.startsWith('spot-');
 }
 function spotCabinetNodes(world: WorldState): Node[] {
   const hosts = new Set(checkoutPods(world).map((p) => p.node));
@@ -81,8 +81,41 @@ function Controls({ world }: CabinetProps) {
   const total = s.counts.spot + s.counts.onDemand + s.counts.fallback;
   const realised = total ? Math.round((s.counts.spot / total) * 100) : 0;
 
+  const everDialed = useRef(false);
+  const everChaos = useRef(false);
+  const everReverted = useRef(false);
+  if (s.spotRatio >= 50 && s.counts.spot > 0) everDialed.current = true;
+  if (s.stockout || s.inFallback || s.counts.fallback > 0) everChaos.current = true;
+  if (everChaos.current && !s.stockout && s.counts.fallback === 0 && s.counts.spot > 0) everReverted.current = true;
+
   return (
     <>
+      <MissionCard
+        accent={ACCENT}
+        goal="Cut checkout cluster cost by ~50% using a Spot/On-Demand ratio split, survive a Spot preemption or stockout on On-Demand fallback, and watch Active reversion move pods back to Spot."
+        win={`Highest cost savings (${savings}% below all On-Demand) with 0 dropped pods`}
+        steps={[
+          {
+            label: 'Set Spot Ratio ≥ 50%',
+            detail: 'WorkloadClass splits checkout pods across Spot (green) and On-Demand (blue) nodes.',
+            done: everDialed.current || (s.spotRatio >= 50 && s.counts.spot > 0),
+            active: !everDialed.current,
+          },
+          {
+            label: 'Trigger Chaos (Preempt or Stockout)',
+            detail: 'Spot pods evacuate onto On-Demand fallback (InFallback=True, yellow cubes).',
+            done: everChaos.current,
+            active: everDialed.current && !everChaos.current,
+          },
+          {
+            label: 'Restore Spot Capacity (Active Reversion)',
+            detail: 'Disengage stockout so Active reversion moves fallback pods back onto Spot.',
+            done: everReverted.current,
+            active: everChaos.current && !everReverted.current,
+          },
+        ]}
+      />
+
       <ControlGroup title="WorkloadClass/checkout · spotRatio">
         <div className="flex items-end justify-between">
           <div className="font-mono text-[2.6rem] font-black leading-none" style={{ color: ACCENT }}>
@@ -187,15 +220,15 @@ function Controls({ world }: CabinetProps) {
 
       <ControlGroup title="Placement">
         <div className="flex flex-wrap gap-2">
-          <Stat label="spot" value={s.counts.spot} tone="text-cyan-300" />
-          <Stat label="on-demand" value={s.counts.onDemand} tone="text-sky-200" />
-          <Stat label="fallback" value={s.counts.fallback} tone={s.counts.fallback ? 'text-orange-300' : 'text-slate-500'} sub={s.counts.fallback ? <span style={{ color: FALLBACK_COLOR }}>spot-targeted, on on-demand</span> : undefined} />
-          <Stat label="pending" value={s.counts.pending} tone={s.counts.pending ? 'text-amber-300' : 'text-slate-500'} />
+          <Stat label="spot" value={s.counts.spot} tone="text-[#81c995]" />
+          <Stat label="on-demand" value={s.counts.onDemand} tone="text-[#8ab4f8]" />
+          <Stat label="fallback" value={s.counts.fallback} tone={s.counts.fallback ? 'text-[#fbbc04]' : 'text-slate-500'} sub={s.counts.fallback ? <span style={{ color: FALLBACK_COLOR }}>spot-targeted, on on-demand</span> : undefined} />
+          <Stat label="pending" value={s.counts.pending} tone={s.counts.pending ? 'text-[#fbbc04]' : 'text-slate-500'} />
         </div>
         <div className="flex flex-wrap items-center gap-2 text-[0.8rem]">
-          <Badge tone={s.inFallback ? 'bg-orange-500/30 text-orange-200' : 'bg-slate-700 text-slate-300'}>InFallback={s.inFallback ? 'True' : 'False'}</Badge>
-          <Badge tone={s.validated ? 'bg-lime-500/25 text-lime-200' : 'bg-red-500/30 text-red-200'}>Validated={s.validated ? 'True' : 'False'}</Badge>
-          <Badge tone={s.stockout ? 'bg-red-500/30 text-red-200' : 'bg-slate-700 text-slate-300'}>stockout {s.stockout ? 'ON' : 'off'}</Badge>
+          <Badge tone={s.inFallback ? 'bg-[#fbbc04]/25 text-[#fde293]' : 'bg-[#303134] text-slate-300'}>InFallback={s.inFallback ? 'True' : 'False'}</Badge>
+          <Badge tone={s.validated ? 'bg-[#34a853]/25 text-[#81c995]' : 'bg-[#ea4335]/30 text-red-200'}>Validated={s.validated ? 'True' : 'False'}</Badge>
+          <Badge tone={s.stockout ? 'bg-[#ea4335]/30 text-red-200' : 'bg-[#303134] text-slate-300'}>stockout {s.stockout ? 'ON' : 'off'}</Badge>
           <Badge>
             {s.policy.name} · reversion {s.policy.reversion}
           </Badge>
@@ -248,7 +281,7 @@ function hud(world: WorldState): HudSection[] {
     title: 'WorkloadClass/checkout',
     command: 'kubectl get workloadclass checkout -n arcade-spot -o yaml',
     value: {
-      apiVersion: 'workload.gke.io/v1alpha1',
+      apiVersion: 'workloads.gke.io/v1',
       kind: 'WorkloadClass',
       metadata: { name: 'checkout', namespace: 'arcade-spot', labels: { 'arcade.gke.io/cabinet': 'spot' } },
       spec: {
@@ -270,18 +303,17 @@ function hud(world: WorldState): HudSection[] {
     title: 'GKESpotPlacementPolicy',
     items: [
       ['name', s.policy.name],
-      ['customComputeClass', 'arcade-spot'],
-      ['reversion.action', s.policy.reversion, s.policy.reversion === 'Active' ? 'text-lime-300' : undefined],
+      ['reversion.action', s.policy.reversion, s.policy.reversion === 'Active' ? 'text-[#81c995]' : undefined],
       ['guardrail.minSpotRatio', s.guardrail.minSpotRatio],
       ['guardrail.maxFallbackRatio', s.guardrail.maxFallbackRatio],
-      ['stockout lever', s.stockout ? 'engaged' : 'off', s.stockout ? 'text-red-300' : undefined],
+      ['stockout lever', s.stockout ? 'engaged (CapacityQuota=0)' : 'off', s.stockout ? 'text-red-300' : undefined],
     ],
   };
 
   const podsTable: HudSection = {
     kind: 'table',
     title: 'Pods',
-    command: 'kubectl get pods -n arcade-spot -o wide -L workload.gke.io/placement',
+    command: 'kubectl get pods -n arcade-spot -o wide -L workloads.gke.io/placement',
     columns: ['NAME', 'READY', 'STATUS', 'AGE', 'NODE', 'PLACEMENT', 'FALLBACK'],
     rows: pods.map((p) => [
       p.name,
@@ -292,13 +324,13 @@ function hud(world: WorldState): HudSection[] {
       p.placement ?? '',
       p.fallback ? 'true' : '',
     ]),
-    highlight: (r) => (r[2] === 'Terminating' ? 'text-red-300' : r[6] === 'true' ? 'text-orange-300' : r[1] === '0/1' ? 'text-amber-300' : undefined),
+    highlight: (r) => (r[2] === 'Terminating' ? 'text-red-300' : r[6] === 'true' ? 'text-amber-300' : r[1] === '0/1' ? 'text-amber-300' : undefined),
   };
 
   const nodesTable: HudSection = {
     kind: 'table',
     title: 'Nodes',
-    command: 'kubectl get nodes -l cloud.google.com/compute-class=arcade-spot -L cloud.google.com/gke-spot',
+    command: 'kubectl get nodes -l arcade.demo/cabinet=spot -L cloud.google.com/gke-spot',
     columns: ['NAME', 'STATUS', 'AGE', 'MACHINE', 'GKE-SPOT', 'PODS'],
     rows: nodes.map((n) => [
       shortNodeName(n.name),
