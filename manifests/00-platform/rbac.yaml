@@ -207,6 +207,16 @@ metadata:
 roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: arcade-server-cabinet-writer }
 subjects: [{ kind: ServiceAccount, name: arcade-server, namespace: arcade-system }]
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arcade-server-cabinet-writer
+  namespace: arcade-metrics
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: arcade-server-cabinet-writer }
+subjects: [{ kind: ServiceAccount, name: arcade-server, namespace: arcade-system }]
+---
 # Leaderboard ConfigMap (GET|POST /api/leaderboard).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

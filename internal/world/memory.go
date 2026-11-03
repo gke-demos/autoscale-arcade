@@ -27,12 +27,24 @@ type Memory struct {
 	petSeen     time.Time
 	petHandlers []func(PetState)
 
+	metricLoad       int
+	metricTargetPods int
+	metricHits       int
+	metricHitCurrent bool
+	metricLastScale  time.Time
+
 	onChange func()
 }
 
 // NewMemory returns an empty Memory. onChange (may be nil) is called after any
 // mutation that should trigger a new WorldState snapshot.
-func NewMemory(onChange func()) *Memory { return &Memory{onChange: onChange} }
+func NewMemory(onChange func()) *Memory {
+	return &Memory{
+		onChange:         onChange,
+		metricLoad:       50,
+		metricTargetPods: 7,
+	}
+}
 
 func (m *Memory) changed() {
 	if m.onChange != nil {
@@ -189,6 +201,85 @@ func (m *Memory) ResetPet() {
 	m.mu.Lock()
 	m.pet = nil
 	m.petSeen = time.Time{}
+	m.mu.Unlock()
+	m.changed()
+}
+
+// DesiredReplicasForLoad computes the HPA desired replica count for a given
+// metric load and per-pod targetAverageValue, clamped to [minReplicas..maxReplicas].
+func DesiredReplicasForLoad(load, targetAvg, minReplicas, maxReplicas int) int {
+	if targetAvg <= 0 {
+		targetAvg = 50
+	}
+	if minReplicas <= 0 {
+		minReplicas = 1
+	}
+	if maxReplicas <= 0 {
+		maxReplicas = 10
+	}
+	d := 0
+	if load > 0 {
+		d = (load + targetAvg - 1) / targetAvg
+	}
+	if d < minReplicas {
+		d = minReplicas
+	}
+	if d > maxReplicas {
+		d = maxReplicas
+	}
+	return d
+}
+
+// SetMetricLoad updates the custom Prometheus metric load slider (0..500).
+func (m *Memory) SetMetricLoad(load int) {
+	m.mu.Lock()
+	m.metricLoad = load
+	m.metricLastScale = time.Now()
+	m.mu.Unlock()
+	m.changed()
+}
+
+// SetMetricTarget updates the target pod count challenge (1..10).
+func (m *Memory) SetMetricTarget(target int) {
+	m.mu.Lock()
+	m.metricTargetPods = target
+	m.metricHitCurrent = false
+	m.mu.Unlock()
+	m.changed()
+}
+
+// RecordMetricHit records when the current target pod count has been reached
+// and returns the cumulative hit count.
+func (m *Memory) RecordMetricHit(onTarget bool) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if onTarget && !m.metricHitCurrent {
+		m.metricHitCurrent = true
+		m.metricHits++
+	} else if !onTarget {
+		m.metricHitCurrent = false
+	}
+	return m.metricHits
+}
+
+// MetricsGame returns the current Metric Dialer load, target pod count, hits, and last scale time.
+func (m *Memory) MetricsGame() (load, targetPods, hits int, lastScale time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.metricTargetPods <= 0 {
+		m.metricTargetPods = 7
+	}
+	return m.metricLoad, m.metricTargetPods, m.metricHits, m.metricLastScale
+}
+
+// ResetMetrics returns Metric Dialer bookkeeping to its initial challenge state.
+func (m *Memory) ResetMetrics() {
+	m.mu.Lock()
+	m.metricLoad = 50
+	m.metricTargetPods = 7
+	m.metricHits = 0
+	m.metricHitCurrent = false
+	m.metricLastScale = time.Time{}
 	m.mu.Unlock()
 	m.changed()
 }

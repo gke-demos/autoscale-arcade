@@ -64,6 +64,7 @@ export class MockServer {
   private absorber = { preset: 'none' as AbsorberPreset, burstDesired: 0, startedAt: undefined as string | undefined, allReadyAt: undefined as string | undefined, perPodReadyMs: [] as number[] };
   private lights = { queue: 0, processed: 0, desired: 0, lastScale: undefined as string | undefined, scaledToZeroSince: Date.now() };
   private nitro = { race: undefined as WorldState['cabinets']['nitro']['race'] };
+  private metrics = { load: 50, targetPods: 7, desired: 1, hits: 0, hitCurrent: false, lastScale: undefined as string | undefined };
   private scenario: ScenarioState = { running: false, step: 0, steps: 0, attract: false };
   private scenarioAbort?: () => void;
   private caStatus = { scaleUp: 'NoActivity', scaleDown: 'NoCandidates', candidates: 0 };
@@ -149,6 +150,12 @@ export class MockServer {
         case 'nitro.race':
           this.race();
           break;
+        case 'metrics.load':
+          this.setMetricsLoad(Number(body.load ?? 50));
+          break;
+        case 'metrics.target':
+          this.setMetricsTarget(body.targetPods !== undefined ? Number(body.targetPods) : undefined);
+          break;
         case 'reset':
           this.reset(body.cabinet as CabinetId | undefined);
           break;
@@ -226,6 +233,7 @@ export class MockServer {
     this.mkPod({ name: 'pet-0', cabinet: 'teleporter', workload: 'pet', node: 'gke-arcade-gvisor-pool-1a2b-0001', cpu: { request: '100m' }, created: new Date(Date.now() - 18_421_000).toISOString() });
     this.mkPod({ name: 'stock-5f6d7c8b9-abcde', cabinet: 'nitro', workload: 'stock', node: 'gke-arcade-default-pool-9f1c-0002', cpu: { request: '250m' } });
     this.mkPod({ name: 'nitro-7a8b9c0d1-fghij', cabinet: 'nitro', workload: 'nitro', node: 'gke-arcade-default-pool-9f1c-0002', cpu: { request: '250m' }, boost: { active: false, cpuRequest: '250m', cpuOriginal: '250m' } });
+    this.mkPod({ name: 'metric-worker-6b7c8d9e0-k1m2n', cabinet: 'metrics', workload: 'metric-worker', node: 'gke-arcade-default-pool-9f1c-0001', cpu: { request: '50m' } });
     this.reconcileSpot(true);
     this.event('Normal', 'Started', 'arcade-server', 'Mock arcade-server started (VITE_MOCK=1)');
   }
@@ -310,6 +318,7 @@ export class MockServer {
     else if (workload === 'checkout') this.reconcileSpot();
     else if (workload === 'burst-worker') this.reconcileBurst();
     else if (workload === 'coin-worker') this.reconcileLights();
+    else if (workload === 'metric-worker') this.reconcileMetrics();
     else if (workload === 'stock' || workload === 'nitro') this.ensureNitro(workload);
   }
   /** Schedule a pending pod on a fitting node, else trigger scale-up. */
@@ -740,6 +749,37 @@ export class MockServer {
     }
   }
 
+  // ---- Metric Dialer ------------------------------------------------------
+
+  private setMetricsLoad(load: number) {
+    const clamped = Math.max(0, Math.min(500, Math.round(load)));
+    this.metrics.load = clamped;
+    const want = Math.max(1, Math.min(10, clamped > 0 ? Math.ceil(clamped / 50) : 1));
+    this.metrics.desired = want;
+    this.metrics.lastScale = now();
+    this.event('Normal', 'SuccessfulRescale', 'horizontalpodautoscaler/metric-worker', `New size: ${want}; reason: external metric autoscaling.gke.io|load-tuner|arcade_metric_load = ${clamped} (target avg 50/pod)`, 'metrics');
+    this.reconcileMetrics();
+  }
+  private setMetricsTarget(target?: number) {
+    if (target !== undefined) {
+      this.metrics.targetPods = Math.max(1, Math.min(10, Math.round(target)));
+    } else {
+      const choices = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter((n) => n !== this.metrics.targetPods && n !== this.metrics.desired);
+      this.metrics.targetPods = choices[Math.floor(Math.random() * choices.length)] ?? ((this.metrics.targetPods % 10) + 1);
+    }
+    this.metrics.hitCurrent = false;
+    this.event('Normal', 'TargetChanged', 'autoscalingmetric/load-tuner', `New target challenge: ${this.metrics.targetPods} pods (win band ${(this.metrics.targetPods - 1) * 50 + 1}–${this.metrics.targetPods * 50} req/s)`, 'metrics');
+  }
+  private reconcileMetrics() {
+    const pods = this.podsOf('metric-worker');
+    const d = this.metrics.desired;
+    for (let i = d; i < pods.length; i++) this.removePod(pods[pods.length - 1 - (i - d)], 600);
+    for (let i = pods.length; i < d; i++) {
+      const p = this.mkPod({ name: `metric-worker-6b7c8d9e0-${uid().slice(0, 5)}`, cabinet: 'metrics', workload: 'metric-worker', phase: 'Pending', ready: false, scheduledAt: undefined, readyAt: undefined, cpu: { request: '50m' } });
+      this.after(rnd(250, 700), () => this.place(p, (n) => n.pool === 'default-pool', 12, () => {}));
+    }
+  }
+
   // ---- reset / scenarios ---------------------------------------------------
 
   private reset(cabinet?: CabinetId) {
@@ -775,6 +815,10 @@ export class MockServer {
           break;
         case 'nitro':
           this.nitro.race = undefined;
+          break;
+        case 'metrics':
+          this.metrics = { load: 50, targetPods: 7, desired: 1, hits: 0, hitCurrent: false, lastScale: now() };
+          this.reconcileMetrics();
           break;
       }
       this.event('Normal', 'Reset', `cabinet/${id}`, 'returned to start state', id);
@@ -834,12 +878,20 @@ export class MockServer {
         { caption: 'After readiness VPA shrinks the boosted pod in place (RESTARTS 0).', wait: 8000 },
       ],
     },
+    metrics: {
+      cabinet: 'metrics',
+      steps: [
+        { caption: 'AutoscalingMetric/load-tuner feeds arcade_metric_load to HPA/metric-worker (maxReplicas: 10, target avg: 50).', action: () => this.setMetricsTarget(7), wait: 3500 },
+        { caption: 'Slide custom metric load to 350 req/s → HPA computes ceil(350 / 50) = 7 pods!', action: () => this.setMetricsLoad(350), wait: 7000 },
+        { caption: 'Bullseye! 7/7 pods Ready. Now roll a new target: 3 pods and dial load to 150 req/s.', action: () => { this.setMetricsTarget(3); this.setMetricsLoad(150); }, wait: 6000 },
+      ],
+    },
   };
 
   private runScenario(name: string) {
     this.stopScenario();
     // scenarios/<name>.yaml is named after the cabinet id; accept the old long names too.
-    const alias: Record<string, string> = { 'capacity-climber': 'climber', 'spot-on': 'spot', 'pod-teleporter': 'teleporter', 'shock-absorber': 'absorber', 'lights-out': 'lights' };
+    const alias: Record<string, string> = { 'capacity-climber': 'climber', 'spot-on': 'spot', 'pod-teleporter': 'teleporter', 'shock-absorber': 'absorber', 'lights-out': 'lights', 'metric-dialer': 'metrics' };
     const names = name === 'all' || name === 'attract' ? [...CABINET_IDS] : [alias[name] ?? name];
     const loop = name === 'attract';
     let cancelled = false;
@@ -958,6 +1010,15 @@ export class MockServer {
     const bufNodes = this.nodes.filter((n) => n.computeClass === 'arcade-absorber' && !n.deleting);
     const burstPods = this.podsOf('burst-worker');
     const coinPods = this.podsOf('coin-worker');
+    const metricPods = this.podsOf('metric-worker');
+    const metricReady = metricPods.filter((p) => p.ready).length;
+    const metricOnTarget = metricReady === this.metrics.targetPods && this.metrics.desired === this.metrics.targetPods;
+    if (metricOnTarget && !this.metrics.hitCurrent) {
+      this.metrics.hitCurrent = true;
+      this.metrics.hits += 1;
+    } else if (!metricOnTarget) {
+      this.metrics.hitCurrent = false;
+    }
     const inFallback = checkout.some((p) => p.fallback);
     const pending = this.pods.filter((p) => !p.node && !p.deleting).length;
     const pools = [...new Set(this.nodes.map((n) => n.pool))];
@@ -1042,6 +1103,25 @@ export class MockServer {
         nitro: {
           race: this.nitro.race ? { ...this.nitro.race, lanes: this.nitro.race.lanes.map((l) => ({ ...l })) } : undefined,
           vpa: { factor: 4, durationSeconds: 0, updateMode: 'InPlaceOrRecreate' },
+        },
+        metrics: {
+          load: this.metrics.load,
+          targetAverage: 50,
+          targetPods: this.metrics.targetPods,
+          readyPods: metricReady,
+          onTarget: metricOnTarget,
+          hits: this.metrics.hits,
+          hpa: {
+            current: metricPods.length,
+            desired: this.metrics.desired,
+            min: 1,
+            max: 10,
+            scaledToZero: false,
+            scalingActive: true,
+            metricValue: this.metrics.load,
+            lastScale: this.metrics.lastScale,
+          },
+          metricName: 'autoscaling.gke.io|load-tuner|arcade_metric_load',
         },
       },
       scenario: { ...this.scenario },

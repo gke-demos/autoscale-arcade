@@ -1,4 +1,4 @@
 # Play every cabinet once, in order. `scenario.run {name: "all"}` / `make play-all`.
 name: all
 title: "Play all"
-cabinets: [teleporter, nitro, lights, absorber, spot, climber]
+cabinets: [teleporter, nitro, metrics, lights, absorber, spot, climber]

@@ -3,6 +3,6 @@
 # cabinets first so a passer-by sees something within two minutes.
 name: attract
 title: "Attract mode"
-cabinets: [teleporter, nitro, lights, absorber, spot, climber]
+cabinets: [teleporter, nitro, metrics, lights, absorber, spot, climber]
 loop: true
 resetBetween: true

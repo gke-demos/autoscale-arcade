@@ -13,7 +13,7 @@ export function Lobby({ world }: { world: WorldState }) {
   const layout = useMemo(() => computeLayout(world.nodes, world.pods, {}), [world.nodes, world.pods]);
   const setView = useArcade((s) => s.setView);
   const clusterW = layout.bounds.maxX - layout.bounds.minX;
-  const spacing = 5.6;
+  const spacing = 4.9;
   const rowW = spacing * (CABINET_IDS.length - 1);
   const halfW = Math.max(clusterW / 2, rowW / 2 + 2.5);
   const clusterZ = -(layout.bounds.maxZ + 8);

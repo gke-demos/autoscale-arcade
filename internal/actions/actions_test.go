@@ -141,6 +141,7 @@ func TestScaleAndRace(t *testing.T) {
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "stock", Namespace: "arcade-nitro"}, Spec: appsv1.DeploymentSpec{Replicas: &one}},
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "nitro", Namespace: "arcade-nitro"}, Spec: appsv1.DeploymentSpec{Replicas: &one}},
 		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "burst-worker", Namespace: "arcade-absorber"}},
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "metric-worker", Namespace: "arcade-metrics"}, Spec: appsv1.DeploymentSpec{Replicas: &one}},
 	}
 	a, _ := newTestActions(t, deps...)
 	ctx := context.Background()
@@ -185,6 +186,26 @@ func TestScaleAndRace(t *testing.T) {
 	}
 	if d, _ := a.World.Memory.QueueDepth(); d != 0 {
 		t.Errorf("queue after reset: %d", d)
+	}
+	if err := a.Do(ctx, "metrics.target", json.RawMessage(`{"targetPods":15}`)); err == nil {
+		t.Error("targetPods > 10 must fail")
+	}
+	if err := a.Do(ctx, "metrics.target", json.RawMessage(`{"targetPods":6}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Do(ctx, "metrics.load", json.RawMessage(`{"load":275}`)); err != nil {
+		t.Fatal(err)
+	}
+	mw, _ := a.World.Clients.Kube.AppsV1().Deployments("arcade-metrics").Get(ctx, "metric-worker", metav1.GetOptions{})
+	if mw.Spec.Replicas == nil || *mw.Spec.Replicas != 6 {
+		t.Errorf("metric-worker replicas: %v", mw.Spec.Replicas)
+	}
+	if err := a.Do(ctx, "reset", json.RawMessage(`{"cabinet":"metrics"}`)); err != nil {
+		t.Fatal(err)
+	}
+	mw, _ = a.World.Clients.Kube.AppsV1().Deployments("arcade-metrics").Get(ctx, "metric-worker", metav1.GetOptions{})
+	if mw.Spec.Replicas == nil || *mw.Spec.Replicas != 1 {
+		t.Errorf("metric-worker after reset: %v", mw.Spec.Replicas)
 	}
 	if err := a.Do(ctx, "bogus", nil); err == nil {
 		t.Error("unknown action must fail")

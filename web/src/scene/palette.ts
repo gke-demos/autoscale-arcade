@@ -36,6 +36,7 @@ export const WORKLOAD_COLORS: Record<string, string> = {
   'coin-worker': '#fbbc04',
   stock: '#9aa0a6',
   nitro: '#ea4335',
+  'metric-worker': '#34a853',
   'arcade-server': '#e8eaed',
 };
 const FALLBACK = ['#4285f4', '#34a853', '#fbbc04', '#ea4335', '#8ab4f8', '#81c995'];

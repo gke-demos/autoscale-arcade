@@ -324,6 +324,7 @@ var aliases = map[string]string{
 	"pod-teleporter":   world.CabinetTeleporter,
 	"shock-absorber":   world.CabinetAbsorber,
 	"lights-out":       world.CabinetLights,
+	"metric-dialer":    world.CabinetMetrics,
 }
 
 // Resolve finds a scenario by file name, by its `name:`/`cabinet:` field, or

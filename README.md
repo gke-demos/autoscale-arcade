@@ -2,7 +2,7 @@
 
 **The latest and greatest in GKE cluster and workload autoscaling — as an arcade.**
 
-Autoscale Arcade is an interactive, WebGL-powered kiosk demo built for **KubeCon + CloudNativeCon North America 2026 (Salt Lake City)**. It runs on a single **GKE Standard 1.37** cluster and turns six autoscaling features into six playable "cabinets". Every animation on screen is driven by real Kubernetes objects streamed live from the cluster; nothing is faked.
+Autoscale Arcade is an interactive, WebGL-powered kiosk demo built for **KubeCon + CloudNativeCon North America 2026 (Salt Lake City)**. It runs on a single **GKE Standard 1.37** cluster and turns seven autoscaling features into seven playable "cabinets". Every animation on screen is driven by real Kubernetes objects streamed live from the cluster; nothing is faked.
 
 | Cabinet | GKE feature | What you do |
 | :--- | :--- | :--- |
@@ -12,8 +12,9 @@ Autoscale Arcade is an interactive, WebGL-powered kiosk demo built for **KubeCon
 | **Shock Absorber** | [Capacity Buffers](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/capacity-buffer) (active + standby) | Pick a buffer, fire a burst, beat the clock at the lowest cost. |
 | **Lights Out** | [Native scale-to-zero](https://cloud.google.com/blog/products/containers-kubernetes/gke-adds-native-scale-to-zero-capabilities) (HPA `minReplicas: 0` + `AutoscalingMetric`) | Drop coins into a queue; pods wake from zero and go dark again. |
 | **Nitro** | [CPU Startup Boost](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/boost-application-startup) (VPA `startupBoost`) | Two identical pods race to `Ready`. One has nitro. |
+| **Metric Dialer** | [Autoscale workloads on Prometheus metrics](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/autoscale-using-metrics) (`AutoscalingMetric` + HPA `External` metric, `maxReplicas: 10`) | Slide the custom metric load (`0–500` req/s) to hit the target pod count (`1..10`). |
 
-Each cabinet can be played **manually** (touch or mouse/keyboard) or run hands-free with a **▶ Auto-run** button; an **attract mode** loops through all six while nobody is at the pedestal.
+Each cabinet can be played **manually** (touch or mouse/keyboard) or run hands-free with a **▶ Auto-run** button; an **attract mode** loops through all seven while nobody is at the pedestal.
 
 > [!NOTE]
 > **Status: design phase.** See [docs/design.md](docs/design.md) for the full design, [docs/adr/](docs/adr/) for decisions, and the [issue tracker](https://github.com/gke-demos/autoscale-arcade/issues) for the build plan. The live demo will be served at `https://autoscale-arcade.demo.gke.ninja` behind Identity-Aware Proxy.

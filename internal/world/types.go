@@ -128,6 +128,7 @@ type Cabinets struct {
 	Absorber   AbsorberState   `json:"absorber"`
 	Lights     LightsState     `json:"lights"`
 	Nitro      NitroState      `json:"nitro"`
+	Metrics    MetricsState    `json:"metrics"`
 }
 
 // --- Capacity Climber ---
@@ -338,6 +339,19 @@ type NitroState struct {
 	VPA  VPAState `json:"vpa"`
 }
 
+// --- Metric Dialer ---
+
+type MetricsState struct {
+	Load          int      `json:"load"`
+	TargetAverage int      `json:"targetAverage"`
+	TargetPods    int      `json:"targetPods"`
+	ReadyPods     int      `json:"readyPods"`
+	OnTarget      bool     `json:"onTarget"`
+	Hits          int      `json:"hits"`
+	HPA           HPAState `json:"hpa"`
+	MetricName    string   `json:"metricName"`
+}
+
 // --- Scenario ---
 
 type ScenarioState struct {
@@ -360,6 +374,7 @@ const (
 	CabinetAbsorber   = "absorber"
 	CabinetLights     = "lights"
 	CabinetNitro      = "nitro"
+	CabinetMetrics    = "metrics"
 
 	NamespaceSystem = "arcade-system"
 
@@ -370,7 +385,7 @@ const (
 )
 
 // CabinetIDs in lobby order.
-var CabinetIDs = []string{CabinetClimber, CabinetSpot, CabinetTeleporter, CabinetAbsorber, CabinetLights, CabinetNitro}
+var CabinetIDs = []string{CabinetClimber, CabinetSpot, CabinetTeleporter, CabinetAbsorber, CabinetLights, CabinetNitro, CabinetMetrics}
 
 // Namespace returns the workload namespace of a cabinet.
 func Namespace(cabinet string) string { return "arcade-" + cabinet }

@@ -62,6 +62,14 @@ metadata:
     app.kubernetes.io/part-of: autoscale-arcade
     arcade.gke.io/cabinet: nitro
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arcade-metrics
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: metrics
+---
 # KSA for the pet (Pod Teleporter). Pod Snapshots write to GCS with the pod's
 # KSA identity; bucket IAM is bound to the whole namespace, so any KSA works,
 # but the pet uses this one so the binding is explicit.

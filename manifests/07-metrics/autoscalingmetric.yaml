@@ -1,0 +1,22 @@
+# Cabinet 7: Metric Dialer — Autoscale workloads on Prometheus metrics
+# (https://docs.cloud.google.com/kubernetes-engine/docs/how-to/autoscale-using-metrics).
+#
+# GKE's native AutoscalingMetric CRD (autoscaling.gke.io/v1beta1) exposes custom
+# Prometheus metrics (either via direct pod container endpoint gauge scraping
+# `spec.metrics[].pod` or Managed Service for Prometheus queries `spec.metrics[].promql`)
+# directly to standard HorizontalPodAutoscalers as `autoscaling.gke.io|<CR name>|<metric name>`
+# without third-party custom-metrics adapters.
+apiVersion: autoscaling.gke.io/v1beta1
+kind: AutoscalingMetric
+metadata:
+  name: load-tuner
+  namespace: arcade-metrics
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: metrics
+spec:
+  metrics:
+    - promql:
+        name: arcade_metric_load
+        type: External
+        query: 'max(arcade_metric_load{namespace="arcade-system"})'

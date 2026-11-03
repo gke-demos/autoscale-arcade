@@ -1,0 +1,35 @@
+# Deployment/metric-worker: scales between 1 and 10 replicas based on the
+# Metric Dialer custom Prometheus load slider (`arcade_metric_load`, target 50/pod).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metric-worker
+  namespace: arcade-metrics
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: metrics
+    app: metric-worker
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: metric-worker
+  template:
+    metadata:
+      labels:
+        app: metric-worker
+        app.kubernetes.io/part-of: autoscale-arcade
+        arcade.gke.io/cabinet: metrics
+        arcade.gke.io/workload: metric-worker
+    spec:
+      terminationGracePeriodSeconds: 2
+      containers:
+        - name: worker
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 64Mi

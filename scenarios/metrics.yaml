@@ -1,0 +1,21 @@
+# Metric Dialer — Autoscale on Prometheus metrics (AutoscalingMetric + HPA, maxReplicas 10).
+name: metrics
+cabinet: metrics
+title: "Metric Dialer"
+steps:
+  - caption: "Metric Dialer. AutoscalingMetric/load-tuner feeds custom Prometheus metric arcade_metric_load to HorizontalPodAutoscaler/metric-worker (maxReplicas: 10, targetAverageValue: 50)."
+    action: { name: metrics.target, targetPods: 7 }
+    wait: 3s
+  - caption: "Challenge: hit {{ .targetPods }} pods! Sliding custom metric load to 350 req/s (ceil(350 / 50) = 7 pods)…"
+    action: { name: metrics.load, load: 350 }
+    waitFor: { path: "readyPods", equals: 7, timeout: 45s }
+    onTimeout: continue
+  - caption: "Bullseye! {{ .readyPods }} / {{ .targetPods }} pods Ready ({{ .hpa.desired }} desired, max 10). Let's roll a new target: 3 pods."
+    action: { name: metrics.target, targetPods: 3 }
+    wait: 3s
+  - caption: "Sliding custom metric load down to 150 req/s (ceil(150 / 50) = 3 pods)…"
+    action: { name: metrics.load, load: 150 }
+    waitFor: { path: "readyPods", equals: 3, timeout: 45s }
+    onTimeout: continue
+  - caption: "Hit! {{ .readyPods }} / {{ .targetPods }} pods Ready ({{ .hits }} target hits scored)."
+    wait: 4s

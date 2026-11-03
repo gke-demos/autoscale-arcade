@@ -74,7 +74,8 @@ var Names = []string{
 	"spot.scale", "spot.ratio", "spot.preempt", "spot.stockout",
 	"teleporter.migrate", "teleporter.random",
 	"absorber.preset", "absorber.burst", "absorber.reset",
-	"lights.coin", "nitro.race", "reset", "scenario.run", "scenario.stop",
+	"lights.coin", "nitro.race", "metrics.load", "metrics.target",
+	"reset", "scenario.run", "scenario.stop",
 }
 
 // Do runs one action. body is the JSON request body (may be empty).
@@ -83,18 +84,21 @@ func (a *Actions) Do(ctx context.Context, name string, body json.RawMessage) err
 		body = json.RawMessage("{}")
 	}
 	var p struct {
-		Replicas  *int   `json:"replicas"`
-		Locked    *bool  `json:"locked"`
-		SpotRatio *int   `json:"spotRatio"`
-		Ratio     *int   `json:"ratio"`
-		Node      string `json:"node"`
-		Enabled   *bool  `json:"enabled"`
-		ToNode    string `json:"toNode"`
-		Preset    string `json:"preset"`
-		Delta     *int   `json:"delta"`
-		Count     *int   `json:"count"`
-		Cabinet   string `json:"cabinet"`
-		Name      string `json:"name"`
+		Replicas   *int   `json:"replicas"`
+		Locked     *bool  `json:"locked"`
+		SpotRatio  *int   `json:"spotRatio"`
+		Ratio      *int   `json:"ratio"`
+		Node       string `json:"node"`
+		Enabled    *bool  `json:"enabled"`
+		ToNode     string `json:"toNode"`
+		Preset     string `json:"preset"`
+		Delta      *int   `json:"delta"`
+		Count      *int   `json:"count"`
+		Load       *int   `json:"load"`
+		TargetPods *int   `json:"targetPods"`
+		Target     *int   `json:"target"`
+		Cabinet    string `json:"cabinet"`
+		Name       string `json:"name"`
 	}
 	if err := json.Unmarshal(body, &p); err != nil {
 		return fmt.Errorf("%w: bad body: %v", ErrBadRequest, err)
@@ -170,6 +174,17 @@ func (a *Actions) Do(ctx context.Context, name string, body json.RawMessage) err
 		return nil
 	case "nitro.race":
 		return a.race(ctx)
+	case "metrics.load":
+		load, err := inRange("load", p.Load, 0, 500)
+		if err != nil {
+			return err
+		}
+		return a.metricsLoad(ctx, load)
+	case "metrics.target":
+		if p.TargetPods == nil {
+			p.TargetPods = p.Target
+		}
+		return a.metricsTarget(p.TargetPods)
 	case "reset":
 		return a.Reset(ctx, p.Cabinet)
 	case "scenario.run":
@@ -724,6 +739,48 @@ func (a *Actions) race(ctx context.Context) error {
 	return nil
 }
 
+// ---- Metric Dialer ----
+
+func (a *Actions) metricsLoad(ctx context.Context, load int) error {
+	a.World.Memory.SetMetricLoad(load)
+	desired := world.DesiredReplicasForLoad(load, 50, 1, 10)
+	if a.World.Clients.Kube == nil {
+		return nil
+	}
+	err := a.scale(ctx, world.Namespace(world.CabinetMetrics), "metric-worker", desired)
+	if err != nil && apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+func (a *Actions) metricsTarget(want *int) error {
+	var target int
+	if want != nil {
+		var err error
+		target, err = inRange("targetPods", want, 1, 10)
+		if err != nil {
+			return err
+		}
+	} else {
+		load, curTarget, _, _ := a.World.Memory.MetricsGame()
+		curDesired := world.DesiredReplicasForLoad(load, 50, 1, 10)
+		var choices []int
+		for i := 1; i <= 10; i++ {
+			if i != curTarget && i != curDesired {
+				choices = append(choices, i)
+			}
+		}
+		if len(choices) == 0 {
+			target = (curTarget % 10) + 1
+		} else {
+			target = choices[a.Rand.Intn(len(choices))]
+		}
+	}
+	a.World.Memory.SetMetricTarget(target)
+	return nil
+}
+
 // ---- reset ----
 
 // Reset returns one cabinet ("" = all) to its start state (contracts.md).
@@ -754,6 +811,11 @@ func (a *Actions) Reset(ctx context.Context, cabinet string) error {
 		case world.CabinetNitro:
 			a.World.Memory.SetRaceStarted(time.Time{})
 			err = errors.Join(a.scale(ctx, world.Namespace(id), "stock", 1), a.scale(ctx, world.Namespace(id), "nitro", 1))
+		case world.CabinetMetrics:
+			a.World.Memory.ResetMetrics()
+			if scaleErr := a.scale(ctx, world.Namespace(id), "metric-worker", 1); scaleErr != nil && !apierrors.IsNotFound(scaleErr) {
+				err = scaleErr
+			}
 		default:
 			err = fmt.Errorf("%w: unknown cabinet %q", ErrBadRequest, id)
 		}

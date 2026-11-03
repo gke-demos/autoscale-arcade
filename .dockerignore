@@ -10,6 +10,7 @@ LICENSE
 
 # Local build output and deps (rebuilt inside the image)
 bin/
+videos/
 web/node_modules/
 web/dist/
 internal/server/dist/*

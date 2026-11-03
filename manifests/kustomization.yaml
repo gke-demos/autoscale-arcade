@@ -11,4 +11,5 @@ resources:
   - 04-absorber
   - 05-lights
   - 06-nitro
+  - 07-metrics
   - 90-gateway

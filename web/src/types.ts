@@ -31,6 +31,7 @@ export interface WorldState {
     absorber: AbsorberState;
     lights: LightsState;
     nitro: NitroState;
+    metrics: MetricsState;
   };
   scenario: ScenarioState;
   events: ArcadeEvent[];
@@ -221,6 +222,26 @@ export interface NitroState {
   vpa: { factor: number; durationSeconds: number; updateMode: string };
 }
 
+export interface MetricsState {
+  load: number;
+  targetAverage: number;
+  targetPods: number;
+  readyPods: number;
+  onTarget: boolean;
+  hits: number;
+  hpa: {
+    current: number;
+    desired: number;
+    min: number;
+    max: number;
+    scaledToZero: boolean;
+    scalingActive: boolean;
+    metricValue?: number;
+    lastScale?: string;
+  };
+  metricName: string;
+}
+
 export interface ScenarioState {
   running: boolean;
   name?: string;
@@ -241,9 +262,9 @@ export interface LeaderboardEntry {
   at?: string;
 }
 
-export type CabinetId = 'climber' | 'spot' | 'teleporter' | 'absorber' | 'lights' | 'nitro';
+export type CabinetId = 'climber' | 'spot' | 'teleporter' | 'absorber' | 'lights' | 'nitro' | 'metrics';
 
-export const CABINET_IDS: CabinetId[] = ['climber', 'spot', 'teleporter', 'absorber', 'lights', 'nitro'];
+export const CABINET_IDS: CabinetId[] = ['climber', 'spot', 'teleporter', 'absorber', 'lights', 'nitro', 'metrics'];
 
 export interface CabinetMeta {
   id: CabinetId;
@@ -323,5 +344,16 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     namespace: 'arcade-nitro',
     scenario: 'nitro',
     accent: '#ea4335',
+  },
+  metrics: {
+    id: 'metrics',
+    key: '7',
+    title: 'Metric Dialer',
+    subtitle: 'Prometheus HPA',
+    feature: 'AutoscalingMetric (pod / promql) · HPA maxReplicas: 10',
+    goal: 'Slide the custom Prometheus metric load to scale the HPA to the exact target pod count (1–10 pods).',
+    namespace: 'arcade-metrics',
+    scenario: 'metrics',
+    accent: '#34a853',
   },
 };

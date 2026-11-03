@@ -72,7 +72,7 @@ export default function App() {
 
 function CabinetView({ id, world }: { id: CabinetId; world: WorldState }) {
   const mod = cabinets[id];
-  const layout = useCabinetLayout(world, id, { extraNodes: id === 'teleporter' ? (n) => n.gvisor : id === 'nitro' || id === 'lights' ? (n) => n.pool === 'default-pool' : undefined });
+  const layout = useCabinetLayout(world, id, { extraNodes: id === 'teleporter' ? (n) => n.gvisor : id === 'nitro' || id === 'lights' || id === 'metrics' ? (n) => n.pool === 'default-pool' : undefined });
   const framed = useMemo(() => (mod.frame ? { ...layout, bounds: mod.frame(layout.bounds) } : layout), [layout, mod]);
   (window as unknown as { __layout: unknown }).__layout = layout; // dev hook for automated checks
   return (

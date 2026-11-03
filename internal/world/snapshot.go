@@ -146,6 +146,7 @@ func (w *World) Snapshot() *WorldState {
 	st.Cabinets.Absorber = w.absorberState(st)
 	st.Cabinets.Lights = w.lightsState()
 	st.Cabinets.Nitro = w.nitroState(st, k8sPods, k8sEvents)
+	st.Cabinets.Metrics = w.metricsState(st)
 
 	SortNodes(st.Nodes)
 	SortPods(st.Pods)
@@ -1037,5 +1038,82 @@ func (w *World) nitroState(st *WorldState, k8sPods []*corev1.Pod, evs []*corev1.
 		}
 	}
 	out.Race = race
+	return out
+}
+
+// ---- Metric Dialer ----
+
+func (w *World) metricsState(st *WorldState) MetricsState {
+	ns := Namespace(CabinetMetrics)
+	load, targetPods, _, lastScale := w.Memory.MetricsGame()
+	out := MetricsState{
+		Load:          load,
+		TargetAverage: 50,
+		TargetPods:    targetPods,
+		MetricName:    "autoscaling.gke.io|load-tuner|arcade_metric_load",
+		HPA: HPAState{
+			Min:           1,
+			Max:           10,
+			ScalingActive: true,
+		},
+	}
+	if !lastScale.IsZero() {
+		out.HPA.LastScale = rfc3339(lastScale)
+	}
+	for _, p := range st.Pods {
+		if p.Cabinet != CabinetMetrics || p.Workload != "metric-worker" || p.Deleting {
+			continue
+		}
+		out.HPA.Current++
+		if p.Ready {
+			out.ReadyPods++
+		}
+	}
+	if d := w.deployment(ns, "metric-worker"); d != nil {
+		if int(d.Status.Replicas) > out.HPA.Current {
+			out.HPA.Current = int(d.Status.Replicas)
+		}
+		if int(d.Status.ReadyReplicas) > out.ReadyPods {
+			out.ReadyPods = int(d.Status.ReadyReplicas)
+		}
+	}
+	if h := w.hpa(ns, "metric-worker"); h != nil {
+		if h.Spec.MinReplicas != nil {
+			out.HPA.Min = int(*h.Spec.MinReplicas)
+		}
+		if h.Spec.MaxReplicas > 0 {
+			out.HPA.Max = int(h.Spec.MaxReplicas)
+		}
+		if out.HPA.LastScale == "" && h.Status.LastScaleTime != nil {
+			out.HPA.LastScale = rfc3339(h.Status.LastScaleTime.Time)
+		}
+		for _, c := range h.Status.Conditions {
+			if string(c.Type) == "ScalingActive" && c.Status == corev1.ConditionTrue {
+				out.HPA.ScalingActive = true
+			}
+		}
+		for _, m := range h.Spec.Metrics {
+			if m.External != nil {
+				out.MetricName = m.External.Metric.Name
+				if m.External.Target.AverageValue != nil {
+					if v := int(m.External.Target.AverageValue.Value()); v > 0 {
+						out.TargetAverage = v
+					}
+				}
+			}
+		}
+	}
+	if am := w.getDyn(GVRAutoscalingMetric, ns, "load-tuner"); am != nil {
+		for _, ms := range slice(am, "status", "metricStatuses") {
+			if n := mstr(ms, "hpaName"); n != "" {
+				out.MetricName = n
+			}
+		}
+	}
+	out.HPA.Desired = DesiredReplicasForLoad(out.Load, out.TargetAverage, out.HPA.Min, out.HPA.Max)
+	mv := float64(out.Load)
+	out.HPA.MetricValue = &mv
+	out.OnTarget = out.ReadyPods == out.TargetPods && out.HPA.Desired == out.TargetPods
+	out.Hits = w.Memory.RecordMetricHit(out.OnTarget)
 	return out
 }

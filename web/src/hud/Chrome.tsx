@@ -37,16 +37,16 @@ export function TopBar({ world }: { world?: WorldState }) {
           return (
             <button
               key={id}
-              className={`btn !min-w-0 flex-col gap-0 px-3 ${active ? 'btn-accent' : 'btn-ghost'}`}
+              className={`btn !min-w-0 flex-col gap-0 px-2.5 ${active ? 'btn-accent' : 'btn-ghost'}`}
               style={{ '--btn-accent': c.accent } as React.CSSProperties}
               onClick={() => setView(id)}
               title={`${c.title} (${c.key})`}
             >
-              <span className="text-[0.95rem] leading-tight">
-                <span className="kbd mr-1.5 opacity-70">{c.key}</span>
+              <span className="text-[0.88rem] leading-tight">
+                <span className="kbd mr-1 opacity-70">{c.key}</span>
                 {c.title}
               </span>
-              <span className={`text-[0.6rem] font-normal ${active ? 'text-black/70' : 'text-slate-400'}`}>{c.subtitle}</span>
+              <span className={`text-[0.58rem] font-normal ${active ? 'text-black/70' : 'text-slate-400'}`}>{c.subtitle}</span>
             </button>
           );
         })}
@@ -187,7 +187,7 @@ export function HelpOverlay() {
   const setShow = useArcade((s) => s.setShowHelp);
   if (!show) return null;
   const rows: [string, string][] = [
-    ['1–6', 'open a cabinet'],
+    ['1–7', 'open a cabinet'],
     ['0 / Esc', 'lobby'],
     ['Space', '▶ auto-run current cabinet'],
     ['R', 'reset current cabinet'],

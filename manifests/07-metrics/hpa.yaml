@@ -1,0 +1,42 @@
+# HPA targeting Deployment/metric-worker with minReplicas: 1 and maxReplicas: 10
+# on custom Prometheus metric `autoscaling.gke.io|load-tuner|arcade_metric_load`
+# with targetAverageValue: 50 req/s per pod:
+#   desiredReplicas = clamp(ceil(arcade_metric_load / 50), 1, 10)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: metric-worker
+  namespace: arcade-metrics
+  labels:
+    app.kubernetes.io/part-of: autoscale-arcade
+    arcade.gke.io/cabinet: metrics
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: metric-worker
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: autoscaling.gke.io|load-tuner|arcade_metric_load
+        target:
+          type: AverageValue
+          averageValue: "50"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      selectPolicy: Disabled
+      policies:
+        - type: Pods
+          value: 10
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 0
+      selectPolicy: Disabled
+      policies:
+        - type: Pods
+          value: 10
+          periodSeconds: 15

@@ -315,9 +315,13 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	depth, processed := s.world.Memory.QueueDepth()
+	metricLoad, targetPods, metricHits, _ := s.world.Memory.MetricsGame()
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	fmt.Fprintf(w, "# HELP arcade_queue_depth Coins waiting in the Lights Out queue.\n# TYPE arcade_queue_depth gauge\narcade_queue_depth %d\n", depth)
 	fmt.Fprintf(w, "# HELP arcade_coins_processed_total Coins claimed by workers.\n# TYPE arcade_coins_processed_total counter\narcade_coins_processed_total %d\n", processed)
+	fmt.Fprintf(w, "# HELP arcade_metric_load Custom Prometheus metric load set by the Metric Dialer slider (req/s).\n# TYPE arcade_metric_load gauge\narcade_metric_load %d\n", metricLoad)
+	fmt.Fprintf(w, "# HELP arcade_metric_target_pods Current target pod count challenge in Metric Dialer (1..10).\n# TYPE arcade_metric_target_pods gauge\narcade_metric_target_pods %d\n", targetPods)
+	fmt.Fprintf(w, "# HELP arcade_metric_hits_total Target pod count bullseyes scored in Metric Dialer.\n# TYPE arcade_metric_hits_total counter\narcade_metric_hits_total %d\n", metricHits)
 	fmt.Fprintf(w, "# HELP arcade_ws_clients Connected UI WebSocket clients.\n# TYPE arcade_ws_clients gauge\narcade_ws_clients %d\n", s.hub.Count())
 	_, petConnected := s.world.Memory.Pet()
 	fmt.Fprintf(w, "# HELP arcade_pet_connected 1 while the pet streams telemetry.\n# TYPE arcade_pet_connected gauge\narcade_pet_connected %d\n", b2i(petConnected))
