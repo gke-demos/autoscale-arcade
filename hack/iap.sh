@@ -3,6 +3,7 @@
 #
 #   PROJECT_ID=… ./hack/iap.sh grant  alice@google.com [bob@google.com …]   # presenters: IAP-secured Web App User
 #   PROJECT_ID=… ./hack/iap.sh revoke alice@google.com
+#   PROJECT_ID=… ./hack/iap.sh oauth                                         # configure custom OAuth client + grant domain:google.com & domain:gke.ninja
 #   PROJECT_ID=… ./hack/iap.sh audience                                      # print/write IAP_AUDIENCE into Secret arcade-server
 #   PROJECT_ID=… ./hack/iap.sh wi                                            # Workload Identity: arcade-server KSA -> compute.instanceAdmin.v1 (condition-scoped)
 #   PROJECT_ID=… ./hack/iap.sh status
@@ -100,6 +101,27 @@ cmd_wi() {
   echo "done: ${principal}"
 }
 
+cmd_oauth() {
+  local repo_root
+  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  local src_ctx="${SOURCE_CONTEXT:-gke_${PROJECT_ID}_us-central1_agent-substrate}"
+  local dst_ctx="${TARGET_CONTEXT:-gke_${PROJECT_ID}_us-central1_${CLUSTER}}"
+  log "Syncing IAP OAuth client secret (${NAMESPACE}/arcade-iap-oauth)"
+  if [[ -n "${OAUTH_CLIENT_SECRET:-}" ]]; then
+    kubectl --context "${dst_ctx}" -n "${NAMESPACE}" create secret generic arcade-iap-oauth \
+      --from-literal=key="${OAUTH_CLIENT_SECRET}" --dry-run=client -o yaml \
+      | kubectl --context "${dst_ctx}" -n "${NAMESPACE}" apply -f -
+  else
+    gcloud container clusters get-credentials agent-substrate --location us-central1 --project "${PROJECT_ID}" --dns-endpoint >/dev/null 2>&1 || true
+    kubectl --context "${src_ctx}" -n substrate-scope get secret substrate-scope-iap -o json \
+      | jq --arg ns "${NAMESPACE}" 'del(.metadata.resourceVersion,.metadata.uid,.metadata.creationTimestamp,.metadata.annotations) | .metadata.name="arcade-iap-oauth" | .metadata.namespace=$ns' \
+      | kubectl --context "${dst_ctx}" -n "${NAMESPACE}" apply -f -
+  fi
+  log "Applying GCPBackendPolicy with custom OAuth client (manifests/90-gateway/policies.yaml)"
+  kubectl --context "${dst_ctx}" apply -f "${repo_root}/manifests/90-gateway/policies.yaml"
+  cmd_grant domain:google.com domain:gke.ninja
+}
+
 cmd_status() {
   local bs; bs="$(backend_service)"
   log "Gateway"
@@ -114,6 +136,7 @@ cmd_status() {
 case "${cmd}" in
   grant)    cmd_grant "$@" ;;
   revoke)   cmd_revoke "$@" ;;
+  oauth)    cmd_oauth ;;
   audience) cmd_audience ;;
   wi)       cmd_wi ;;
   status)   cmd_status ;;

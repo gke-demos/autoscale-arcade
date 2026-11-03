@@ -1,12 +1,12 @@
 # Backend policies for Service/arcade-server.
 #
-# IAP: enabled without clientID/oauth2ClientSecret, which makes the Gateway
-# controller use the project's Google-managed OAuth client (needs the IAP
-# OAuth brand to exist; "GKE Ninja" does in gke-demos-345619). Presenters are
-# granted roles/iap.httpsResourceAccessor with hack/iap.sh. If this GKE
-# version refused the Google-managed client, create an OAuth client and add
-#   iap: {enabled: true, clientID: <id>, oauth2ClientSecret: {name: arcade-iap-oauth}}
-# with a Secret arcade-iap-oauth containing key `key`.
+# IAP: Uses the custom OAuth 2.0 client in gke-demos-345619 so external org
+# domains (domain:google.com) can authenticate alongside internal org users
+# (domain:gke.ninja). The Google-managed OAuth client (when clientID is omitted)
+# restricts logins to the project's own Workspace org (@gke.ninja) only.
+#
+# Run `./hack/iap.sh oauth` to create Secret/arcade-iap-oauth (key `key`) and
+# bind domain:google.com + domain:gke.ninja on the IAP backend service.
 #
 # timeoutSec 3600 keeps the /ws WebSocket open for an hour (the kiosk reconnects anyway).
 apiVersion: networking.gke.io/v1
@@ -31,6 +31,9 @@ spec:
       sampleRate: 1000000
     iap:
       enabled: true
+      clientID: 1067056737933-r26t9bsnmgq3ht0v6284p6tulh63bsp9.apps.googleusercontent.com
+      oauth2ClientSecret:
+        name: arcade-iap-oauth
 ---
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
