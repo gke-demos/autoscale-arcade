@@ -16,6 +16,10 @@ Autoscale Arcade is an interactive, WebGL-powered kiosk demo built for **KubeCon
 
 Each cabinet can be played **manually** (touch or mouse/keyboard) or run hands-free with a **▶ Auto-run** button; an **attract mode** loops through all seven while nobody is at the pedestal.
 
+You can also switch the UI between two modes at any time using the top-bar **`[ 🕹️ Arcade | ☸️ Demo Lab ]`** toggle (or keyboard shortcut `M`):
+- **🕹️ Arcade Mode (`https://autoscale-arcade.demo.gke.ninja/#/`):** Booth game mode with 3D arcade cabinets, 3-step mission checklists, scoreboards, coins, target pod challenges, leaderboard, and attract mode.
+- **☸️ Demo Lab Mode (`https://autoscale-arcade.demo.gke.ninja/#/demos` or `?mode=demo`):** Pure GKE technical demo mode that removes all game metaphors, scoreboards, coins, and arcade cabinets — showing the full 3D cluster overview, a 7-demo CRD catalog with 1-click **▶ Run Demo** buttons, and straight Kubernetes controller workflows.
+
 > [!NOTE]
 > **Status: design phase.** See [docs/design.md](docs/design.md) for the full design, [docs/adr/](docs/adr/) for decisions, and the [issue tracker](https://github.com/gke-demos/autoscale-arcade/issues) for the build plan. The live demo will be served at `https://autoscale-arcade.demo.gke.ninja` behind Identity-Aware Proxy.
 

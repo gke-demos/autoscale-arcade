@@ -9,13 +9,14 @@ import { CABINETS, type WorldState } from '../types';
 /** Right rail: the real kubectl-style tables / YAML for what is on screen. */
 export function RightRail({ world }: { world: WorldState }) {
   const view = useArcade((s) => s.view);
+  const mode = useArcade((s) => s.mode);
   const tab = useArcade((s) => s.hudTab);
   const setTab = useArcade((s) => s.setHudTab);
   useNow(1000); // ages tick
   const sections = useMemo<HudSection[]>(() => {
     if (view === 'lobby') return lobbyHud(world);
     return cabinets[view].hud(world);
-  }, [view, world]);
+  }, [view, mode, world]);
 
   const tables = sections.filter((s) => s.kind !== 'yaml' && s.title !== 'Events');
   const yamls = sections.filter((s) => s.kind === 'yaml');

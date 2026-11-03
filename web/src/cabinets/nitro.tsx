@@ -129,22 +129,27 @@ function Controls({ world }: CabinetProps) {
   const stockLane = race?.lanes.find((l) => l.name === 'stock');
   const nitroPod = nitroLane ? lanePod(world, nitroLane) : world.pods.find((p) => p.cabinet === 'nitro' && p.workload === 'nitro' && !p.deleting);
   const unboosted = !!(nitroLane?.unboostedAt || (nitroPod?.boost && !nitroPod.boost.active));
+  const isDemo = useArcade((s) => s.mode === 'demo');
 
   return (
     <>
       <MissionCard
         accent={ACCENT}
-        goal="Win the cold-start drag race! Both pods run the exact same CPU-bound startup (2M PBKDF2 rounds), but NITRO gets a 4× VPA CPU Startup Boost (250m → 1000m) and then resizes back in-place with 0 restarts."
+        goal={
+          isDemo
+            ? 'Compare cold-start latency between two identical CPU-bound pods (2M PBKDF2 SHA-256 rounds): stock (250m CPU) vs. nitro with a 4× VPA CPU Startup Boost (250m → 1000m) and in-place resize back to 250m after readiness.'
+            : 'Win the cold-start drag race! Both pods run the exact same CPU-bound startup (2M PBKDF2 rounds), but NITRO gets a 4× VPA CPU Startup Boost (250m → 1000m) and then resizes back in-place with 0 restarts.'
+        }
         win="Fastest NITRO cold-start time (s) & speedup multiplier vs. STOCK"
         steps={[
           {
-            label: 'Start the drag race (🏁 Start race)',
+            label: isDemo ? 'Rollout-restart both deployments' : 'Start the drag race (🏁 Start race)',
             detail: 'Rollout-restarts both stock (250m) and nitro (boosted to 1000m) simultaneously.',
             done: !!race,
             active: !race,
           },
           {
-            label: 'NITRO crosses the Ready=True finish line first',
+            label: isDemo ? 'NITRO reaches Ready=True ~3.5× faster' : 'NITRO crosses the Ready=True finish line first',
             detail: '4× CPU boost lets nitro finish its warm-up ~3–4× faster than stock.',
             done: !!nitroLane?.readyAt || race?.winner === 'nitro',
             active: racing && !nitroLane?.readyAt,
@@ -158,13 +163,13 @@ function Controls({ world }: CabinetProps) {
         ]}
       />
 
-      <ControlGroup title="Race">
-        <ActionButton action="nitro.race" accent={ACCENT} disabled={racing} label="Start race" className="text-[1.3rem]">
-          🏁 Start race
+      <ControlGroup title={isDemo ? 'Cold-Start Comparison Trigger' : 'Race'}>
+        <ActionButton action="nitro.race" accent={ACCENT} disabled={racing} label={isDemo ? 'Restart both pods' : 'Start race'} className={isDemo ? 'text-[1.05rem]' : 'text-[1.3rem]'}>
+          {isDemo ? '▶ Restart Both Pods (Compare Startup)' : '🏁 Start race'}
         </ActionButton>
         <div className="text-[0.85rem] text-slate-400">Rollout-restarts <code>stock</code> and <code>nitro</code>. Both do the same CPU-bound warm-up before Ready; VPA boosts nitro's CPU request ×{n.vpa.factor} at startup, then shrinks it in place.</div>
       </ControlGroup>
-      <ControlGroup title="Lanes">
+      <ControlGroup title={isDemo ? 'Workloads (stock vs. nitro)' : 'Lanes'}>
         <div className="flex flex-col gap-2">
           {(race?.lanes ?? ([{ name: 'stock', boosted: false }, { name: 'nitro', boosted: true }] as NitroLane[])).map((l) => {
             const ms = laneMs(l, now);
@@ -177,7 +182,7 @@ function Controls({ world }: CabinetProps) {
                     {l.name.toUpperCase()}
                   </span>
                   {l.boosted && <Badge tone="bg-rose-500/30 text-rose-100">🔥 boost ×{n.vpa.factor}</Badge>}
-                  {race?.winner === l.name && <Badge tone="bg-amber-400/30 text-amber-100">🏆 winner</Badge>}
+                  {race?.winner === l.name && <Badge tone="bg-amber-400/30 text-amber-100">{isDemo ? '✓ Ready first' : '🏆 winner'}</Badge>}
                   <span className={`ml-auto font-mono text-[1.3rem] font-bold ${l.readyAt ? 'text-lime-300' : ms !== undefined ? 'text-amber-300' : 'text-slate-500'}`}>{ms !== undefined ? stopwatch(ms) : '--:--.-'}</span>
                 </div>
                 <div className="mt-1 grid grid-cols-3 gap-1 font-mono text-[0.68rem] text-slate-400">

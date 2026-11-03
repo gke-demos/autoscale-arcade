@@ -271,8 +271,12 @@ export interface CabinetMeta {
   key: string; // keyboard digit
   title: string;
   subtitle: string;
+  demoTitle: string;
+  demoSubtitle: string;
+  crd: string;
   feature: string;
   goal: string;
+  demoDescription: string;
   namespace: string;
   scenario: string;
   accent: string; // hex colour
@@ -284,8 +288,12 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     key: '1',
     title: 'Capacity Climber',
     subtitle: 'Custom Compute Classes',
+    demoTitle: 'ComputeClass',
+    demoSubtitle: 'Priority Ladders & Migration',
+    crd: 'cloud.google.com/v1 · ComputeClass',
     feature: 'ComputeClass priorities · node pool auto-creation · active migration',
     goal: 'Scale across a 3-rung node priority ladder, survive a rung-1 outage, and auto-migrate back.',
+    demoDescription: 'Ordered machine-family priority ladder (n4d Spot → n4 Spot → n4 On-Demand) with Node Pool Auto-Creation and activeMigration reconciliation.',
     namespace: 'arcade-climber',
     scenario: 'climber',
     accent: '#4285f4',
@@ -295,8 +303,12 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     key: '2',
     title: 'Spot On',
     subtitle: 'Workload Class spot ratio',
+    demoTitle: 'WorkloadClass',
+    demoSubtitle: 'Spot / On-Demand Ratio',
+    crd: 'workload.gke.io/v1beta1 · WorkloadClass',
     feature: 'WorkloadClass capacityStrategy · fallback · active reversion',
     goal: 'Save 50%+ on Spot while surviving preemptions and stockouts with On-Demand fallback.',
+    demoDescription: 'Declarative 80/20 Spot-to-On-Demand replica placement for a single Deployment with FallbackToOnDemand and Active reversion.',
     namespace: 'arcade-spot',
     scenario: 'spot',
     accent: '#34a853',
@@ -306,8 +318,12 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     key: '3',
     title: 'Pod Teleporter',
     subtitle: 'Live Pod Migration',
+    demoTitle: 'Pod Migration',
+    demoSubtitle: 'gVisor Pod Snapshots',
+    crd: 'podmigration.gke.io/v1alpha1 · PodMigrationJob',
     feature: 'PodMigrationJob · gVisor snapshot / restore',
     goal: 'Drag & drop a live stateful pet pod across nodes without losing its in-memory counter.',
+    demoDescription: 'Live checkpoint and restore of a running gVisor sandbox (memory + netstack) to Cloud Storage and onto another node with zero state loss.',
     namespace: 'arcade-teleporter',
     scenario: 'teleporter',
     accent: '#fbbc04',
@@ -317,8 +333,12 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     key: '4',
     title: 'Shock Absorber',
     subtitle: 'Capacity Buffers',
+    demoTitle: 'CapacityBuffer',
+    demoSubtitle: 'Active & Standby Headroom',
+    crd: 'autoscaling.x-k8s.io/v1beta1 · CapacityBuffer',
     feature: 'CapacityBuffer active / standby headroom',
     goal: 'Pre-warm ghost capacity so a +12 pod traffic burst becomes Ready in seconds.',
+    demoDescription: 'Native Kubernetes CapacityBuffer reserving warm Active or Standby cluster headroom slots without dummy pause-pod deployments.',
     namespace: 'arcade-absorber',
     scenario: 'absorber',
     accent: '#4285f4',
@@ -328,8 +348,12 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     key: '5',
     title: 'Lights Out',
     subtitle: 'Scale to zero',
+    demoTitle: 'Scale-to-Zero',
+    demoSubtitle: 'HPA minReplicas: 0',
+    crd: 'autoscaling/v2 · HPA minReplicas: 0',
     feature: 'HPA minReplicas: 0 · AutoscalingMetric',
     goal: 'Drop coins to wake a zero-pod deployment from sleep, drain the queue, and scale back to 0.',
+    demoDescription: 'Native GKE 1.37 HPA scale-to-zero (minReplicas: 0) waking worker pods on demand from a Managed Service for Prometheus queue metric.',
     namespace: 'arcade-lights',
     scenario: 'lights',
     accent: '#fbbc04',
@@ -339,8 +363,12 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     key: '6',
     title: 'Nitro',
     subtitle: 'CPU startup boost',
+    demoTitle: 'Startup Boost',
+    demoSubtitle: 'VPA 4× CPU + In-Place Resize',
+    crd: 'autoscaling.k8s.io/v1 · VerticalPodAutoscaler',
     feature: 'VPA startupBoost · in-place resize',
     goal: 'Win the cold-start drag race with a 4× VPA CPU Startup Boost, then resize in-place with 0 restarts.',
+    demoDescription: 'VPA CPU Startup Boost (4× CPU request during initialization) paired with In-Place Pod Vertical Scaling back to baseline after Ready.',
     namespace: 'arcade-nitro',
     scenario: 'nitro',
     accent: '#ea4335',
@@ -350,8 +378,12 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     key: '7',
     title: 'Metric Dialer',
     subtitle: 'Prometheus HPA',
+    demoTitle: 'Prometheus HPA',
+    demoSubtitle: 'AutoscalingMetric CRD',
+    crd: 'autoscaling.gke.io/v1beta1 · AutoscalingMetric',
     feature: 'AutoscalingMetric (pod / promql) · HPA maxReplicas: 10',
     goal: 'Slide the custom Prometheus metric load to scale the HPA to the exact target pod count (1–10 pods).',
+    demoDescription: 'Declarative AutoscalingMetric bridging custom Prometheus metrics from Managed Service for Prometheus into HPA (maxReplicas: 10).',
     namespace: 'arcade-metrics',
     scenario: 'metrics',
     accent: '#34a853',

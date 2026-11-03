@@ -4,6 +4,7 @@ import type { CabinetId, PetState, ScenarioState, WorldState } from './types';
 import { CABINET_IDS } from './types';
 
 export type View = 'lobby' | CabinetId;
+export type AppMode = 'arcade' | 'demo';
 
 export interface Toast {
   id: number;
@@ -26,12 +27,23 @@ export interface LeaderboardPrompt {
   label: string;
 }
 
+function detectInitialMode(): AppMode {
+  if (typeof window === 'undefined') return 'arcade';
+  const qs = new URLSearchParams(window.location.search).get('mode');
+  const h = window.location.hash.replace(/^#\/?/, '');
+  if (qs === 'demo' || qs === 'demos' || h === 'demo' || h === 'demos' || h.startsWith('demo/') || h.startsWith('demos/')) {
+    return 'demo';
+  }
+  return 'arcade';
+}
+
 interface ArcadeStore {
   world?: WorldState;
   pet?: PetState;
   petSeenAt: number;
   connected: boolean;
   view: View;
+  mode: AppMode;
   toasts: Toast[];
   drag?: DragState;
   lastInput: number;
@@ -47,6 +59,7 @@ interface ArcadeStore {
   setScenario: (s: ScenarioState) => void;
   setConnected: (c: boolean) => void;
   setView: (v: View) => void;
+  setMode: (m: AppMode) => void;
   nextCabinet: (dir: 1 | -1) => void;
   toast: (level: Toast['level'], text: string, ms?: number) => void;
   dismissToast: (id: number) => void;
@@ -67,6 +80,7 @@ export const useArcade = create<ArcadeStore>((set, get) => ({
   petSeenAt: 0,
   connected: false,
   view: 'lobby',
+  mode: detectInitialMode(),
   toasts: [],
   drag: undefined,
   lastInput: Date.now(),
@@ -85,6 +99,11 @@ export const useArcade = create<ArcadeStore>((set, get) => ({
   },
   setConnected: (connected) => set({ connected }),
   setView: (view) => set({ view, drag: undefined, hudTab: 'table' }),
+  setMode: (mode) =>
+    set({
+      mode,
+      ...(mode === 'demo' ? { leaderboardPrompt: undefined, showLeaderboard: false } : {}),
+    }),
   nextCabinet: (dir) => {
     const v = get().view;
     const i = v === 'lobby' ? (dir === 1 ? -1 : CABINET_IDS.length) : CABINET_IDS.indexOf(v);
@@ -108,7 +127,10 @@ export const useArcade = create<ArcadeStore>((set, get) => ({
     else if (!opts.quiet) get().toast('success', opts.label ?? name.replace('.', ' → '), 2500);
     return res;
   },
-  setLeaderboardPrompt: (leaderboardPrompt) => set({ leaderboardPrompt }),
+  setLeaderboardPrompt: (leaderboardPrompt) => {
+    if (get().mode === 'demo' && leaderboardPrompt) return;
+    set({ leaderboardPrompt });
+  },
   setShowLeaderboard: (showLeaderboard) => set({ showLeaderboard }),
   setShowHelp: (showHelp) => set({ showHelp }),
   setHudTab: (hudTab) => set({ hudTab }),
@@ -116,4 +138,5 @@ export const useArcade = create<ArcadeStore>((set, get) => ({
 
 /** Convenience selectors */
 export const useWorld = () => useArcade((s) => s.world);
+export const useMode = () => useArcade((s) => s.mode);
 export const useCabinet = <K extends CabinetId>(id: K) => useArcade((s) => s.world?.cabinets[id]);

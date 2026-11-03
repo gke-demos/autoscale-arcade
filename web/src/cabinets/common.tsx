@@ -195,8 +195,16 @@ export function MissionCard({
   steps: MissionStep[];
   accent?: string;
 }) {
+  const mode = useArcade((s) => s.mode);
+  const view = useArcade((s) => s.view);
+  const act = useArcade((s) => s.act);
+  const running = useArcade((s) => s.world?.scenario.running ?? false);
+  const runningCabinet = useArcade((s) => s.world?.scenario.cabinet);
+  const isDemo = mode === 'demo';
   const doneCount = steps.filter((s) => s.done).length;
   const allDone = doneCount === steps.length && steps.length > 0;
+  const runningThis = running && runningCabinet === view;
+
   return (
     <div
       className="flex flex-col gap-2 rounded-xl border bg-[#131314]/85 p-3"
@@ -204,10 +212,16 @@ export function MissionCard({
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[0.68rem] font-bold uppercase tracking-[0.18em]" style={{ color: allDone ? '#34a853' : accent }}>
-          {allDone ? '★ MISSION COMPLETE' : '🎯 MISSION · HOW TO PLAY'}
+          {isDemo
+            ? allDone
+              ? '✓ WORKFLOW VERIFIED'
+              : '☸️ GKE CONTROLLER WORKFLOW'
+            : allDone
+              ? '★ MISSION COMPLETE'
+              : '🎯 MISSION · HOW TO PLAY'}
         </span>
         <span className="rounded-full bg-[#303134] px-2 py-0.5 font-mono text-[0.65rem] font-bold text-[#e8eaed]">
-          {doneCount}/{steps.length} steps
+          {doneCount}/{steps.length} {isDemo ? 'stages' : 'steps'}
         </span>
       </div>
       <div className="text-[0.82rem] leading-snug text-[#e8eaed]">{goal}</div>
@@ -237,11 +251,44 @@ export function MissionCard({
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-1.5 border-t border-[#3c4043]/80 pt-1.5 font-mono text-[0.68rem] text-[#9aa0a6]">
-        <span className="text-[#fbbc04]">🏆</span>
-        <span className="font-bold text-[#e8eaed]">Win / Score:</span>
-        <span className="truncate">{win}</span>
-      </div>
+      {isDemo ? (
+        view !== 'lobby' && (
+          <div className="flex items-center gap-2 border-t border-[#3c4043]/80 pt-2">
+            {runningThis ? (
+              <button
+                type="button"
+                onClick={() => void act('scenario.stop', {}, { label: 'Stop demo' })}
+                className="btn btn-accent !min-h-[2.2rem] flex-1 !py-1 font-mono text-[0.78rem]"
+                style={{ '--btn-accent': '#ea4335' } as React.CSSProperties}
+              >
+                ■ Stop Automated Demo
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void act('scenario.run', { name: view }, { label: `Run ${view} demo` })}
+                className="btn btn-accent !min-h-[2.2rem] flex-1 !py-1 font-mono text-[0.78rem]"
+                style={{ '--btn-accent': accent } as React.CSSProperties}
+              >
+                ▶ Run Automated Demo
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void act('reset', { cabinet: view }, { label: `Reset ${view}` })}
+              className="btn btn-ghost !min-h-[2.2rem] !min-w-0 !px-3 !py-1 font-mono text-[0.76rem]"
+            >
+              ↺ Reset
+            </button>
+          </div>
+        )
+      ) : (
+        <div className="flex items-center gap-1.5 border-t border-[#3c4043]/80 pt-1.5 font-mono text-[0.68rem] text-[#9aa0a6]">
+          <span className="text-[#fbbc04]">🏆</span>
+          <span className="font-bold text-[#e8eaed]">Win / Score:</span>
+          <span className="truncate">{win}</span>
+        </div>
+      )}
     </div>
   );
 }

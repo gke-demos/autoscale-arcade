@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { ago, durationShort } from '../lib/format';
 import { ClusterScene } from '../scene/ClusterScene';
 import type { IslandLayout, Layout } from '../scene/layout';
+import { useArcade } from '../store';
 import type { Node, Pod, WorldState } from '../types';
 import { ActionButton, Badge, ControlGroup, MissionCard, Stat, Stopwatch, eventsSection, podTable, useCabinetLayout, useNow } from './common';
 import type { CabinetModule, CabinetProps, HudSection } from './types';
@@ -82,7 +83,7 @@ function CoinQueue({ depth, position }: { depth: number; position: [number, numb
       {shown > 0 && <pointLight position={[0, shown * (h + 0.012) + 0.6, 0]} color={COIN} intensity={3} distance={4} />}
       <Html position={[0, Math.max(0.6, shown * (h + 0.012) + 0.5), 0]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
         <div className={`whitespace-nowrap rounded-full border px-3 py-1 font-mono text-[0.8rem] ${depth ? 'border-amber-300/50 bg-black/75 text-amber-200' : 'border-slate-600/50 bg-black/60 text-slate-400'}`}>
-          🪙 queue depth {depth}
+          {useArcade.getState().mode === 'demo' ? `queue depth ${depth}` : `🪙 queue depth ${depth}`}
           {depth > MAX_COINS && <span className="ml-1 text-slate-400">(showing {MAX_COINS})</span>}
         </div>
       </Html>
@@ -121,6 +122,7 @@ function lightsOnSince(world: WorldState): string | undefined {
 
 function Controls({ world }: CabinetProps) {
   const l = world.cabinets.lights;
+  const isDemo = useArcade((s) => s.mode === 'demo');
   const now = useNow(250);
   const pods = coinPods(world).filter((p) => !p.deleting);
   const lit = pods.filter((p) => p.ready).length;
@@ -139,11 +141,15 @@ function Controls({ world }: CabinetProps) {
     <>
       <MissionCard
         accent={ACCENT}
-        goal="Wake a sleeping 0-replica deployment by dropping coins into the queue, watch native HPA scale workers 0 → N via Prometheus metrics to drain the coins, and let it scale back to 0."
+        goal={
+          isDemo
+            ? 'Wake a 0-replica worker deployment by pushing jobs into the Prometheus-monitored queue, watch GKE 1.37 native HPA scale workers 0 → N via AutoscalingMetric, and scale back to 0 when idle.'
+            : 'Wake a sleeping 0-replica deployment by dropping coins into the queue, watch native HPA scale workers 0 → N via Prometheus metrics to drain the coins, and let it scale back to 0.'
+        }
         win={`Coins drained (${l.processed}) with minimal lights-on worker time`}
         steps={[
           {
-            label: 'Insert coins into the queue',
+            label: isDemo ? 'Enqueue work items into the queue' : 'Insert coins into the queue',
             detail: 'Pushes arcade_queue_depth > 0 (scraped by Managed Prometheus).',
             done: everQueued.current,
             active: !everQueued.current,
@@ -155,26 +161,28 @@ function Controls({ world }: CabinetProps) {
             active: everQueued.current && !everWoke.current,
           },
           {
-            label: 'Drain the coin queue',
-            detail: 'Workers consume coins until queueDepth hits 0 so HPA can turn the lights back out.',
+            label: isDemo ? 'Drain queue & scale back to zero' : 'Drain the coin queue',
+            detail: isDemo
+              ? 'Workers process items until queueDepth hits 0 so HPA scales Deployment back to 0 replicas.'
+              : 'Workers consume coins until queueDepth hits 0 so HPA can turn the lights back out.',
             done: l.processed > 0 && l.queueDepth === 0,
             active: l.queueDepth > 0,
           },
         ]}
       />
 
-      <ControlGroup title="Coin slot">
+      <ControlGroup title={isDemo ? 'Work Queue Load Generator' : 'Coin slot'}>
         <div className="grid grid-cols-2 gap-2">
-          <ActionButton action="lights.coin" body={{ count: 1 }} accent={ACCENT} label="Insert coin" className="text-[1.2rem]">
-            🪙 Insert coin
+          <ActionButton action="lights.coin" body={{ count: 1 }} accent={ACCENT} label={isDemo ? 'Enqueue +1 job' : 'Insert coin'} className="text-[1.05rem]">
+            {isDemo ? '+1 Enqueue Job' : '🪙 Insert coin'}
           </ActionButton>
-          <ActionButton action="lights.coin" body={{ count: 50 }} label="Slam ×50" className="text-[1.2rem]">
-            💥 Slam ×50
+          <ActionButton action="lights.coin" body={{ count: 50 }} label={isDemo ? 'Burst +50 jobs' : 'Slam ×50'} className="text-[1.05rem]">
+            {isDemo ? '+50 Burst Queue' : '💥 Slam ×50'}
           </ActionButton>
         </div>
         <div className="flex flex-wrap gap-2">
           <Stat label="queue depth" value={<span className={l.queueDepth ? 'text-amber-300' : 'text-slate-300'}>{l.queueDepth}</span>} sub={<span className="font-mono">arcade_queue_depth</span>} />
-          <Stat label="processed" value={l.processed} tone="text-emerald-300" sub="coins drained" />
+          <Stat label="processed" value={l.processed} tone="text-emerald-300" sub={isDemo ? 'jobs completed' : 'coins drained'} />
           <Stat label="metric value" value={l.hpa.metricValue ?? '—'} sub={`target avg ${TARGET_AVG} / pod`} />
         </div>
       </ControlGroup>
@@ -182,7 +190,7 @@ function Controls({ world }: CabinetProps) {
       <ControlGroup title="HorizontalPodAutoscaler · coin-worker">
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={l.hpa.scaledToZero ? 'bg-red-500/25 text-red-200 ring-1 ring-red-400/50' : 'bg-emerald-500/25 text-emerald-200 ring-1 ring-emerald-400/50'}>
-            {l.hpa.scaledToZero ? '💤 ScaledToZero=True' : '💡 lights on · ScaledToZero=False'}
+            {l.hpa.scaledToZero ? '💤 ScaledToZero=True' : isDemo ? '⚡ Active · ScaledToZero=False' : '💡 lights on · ScaledToZero=False'}
           </Badge>
           <Badge tone={l.hpa.scalingActive ? 'bg-sky-500/20 text-sky-200' : 'bg-slate-700 text-slate-300'}>ScalingActive={l.hpa.scalingActive ? 'True' : 'False'}</Badge>
           <span className="font-mono text-[0.72rem] text-slate-400">last scale {l.hpa.lastScale ? `${ago(l.hpa.lastScale, now)} ago` : '—'}</span>
@@ -190,12 +198,12 @@ function Controls({ world }: CabinetProps) {
         <div className="flex flex-wrap gap-2">
           <Stat label="replicas" value={<span className={lit ? 'text-amber-200' : 'text-slate-300'}>{l.hpa.current}</span>} sub={`desired ${l.hpa.desired}`} />
           <Stat label="min / max" value={`${l.hpa.min} / ${l.hpa.max}`} sub="minReplicas 0 = scale to zero" />
-          <Stopwatch startedAt={since} label="lights on for" />
+          <Stopwatch startedAt={since} label={isDemo ? 'active duration' : 'lights on for'} />
         </div>
         {/* pods lit vs max bar meter */}
         <div className="flex flex-col gap-1">
           <div className="flex justify-between font-mono text-[0.7rem] text-slate-400">
-            <span>pods lit</span>
+            <span>{isDemo ? 'ready replicas' : 'pods lit'}</span>
             <span>
               <span className={lit ? 'text-amber-200' : ''}>{lit}</span>/{l.hpa.max}
               {pods.length > lit && <span className="ml-1 text-amber-300">(+{pods.length - lit} warming)</span>}
@@ -221,11 +229,12 @@ function Controls({ world }: CabinetProps) {
 
 function Status({ world }: CabinetProps) {
   const l = world.cabinets.lights;
+  const isDemo = useArcade((s) => s.mode === 'demo');
   const since = lightsOnSince(world);
   return (
     <>
-      <Stat label="queue depth" value={<span className={l.queueDepth ? 'text-amber-300' : 'text-slate-300'}>{l.queueDepth}</span>} sub={l.hpa.scaledToZero ? '💤 scaled to zero' : `${l.hpa.current} worker${l.hpa.current === 1 ? '' : 's'} lit`} />
-      <Stopwatch startedAt={since} label="lights on for" />
+      <Stat label="queue depth" value={<span className={l.queueDepth ? 'text-amber-300' : 'text-slate-300'}>{l.queueDepth}</span>} sub={l.hpa.scaledToZero ? '💤 scaled to zero' : `${l.hpa.current} worker${l.hpa.current === 1 ? '' : 's'} ${isDemo ? 'ready' : 'lit'}`} />
+      <Stopwatch startedAt={since} label={isDemo ? 'active duration' : 'lights on for'} />
     </>
   );
 }

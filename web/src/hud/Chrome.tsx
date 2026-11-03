@@ -9,20 +9,23 @@ import { CABINETS, CABINET_IDS, type LeaderboardEntry, type WorldState } from '.
 export function TopBar({ world }: { world?: WorldState }) {
   const view = useArcade((s) => s.view);
   const setView = useArcade((s) => s.setView);
+  const mode = useArcade((s) => s.mode);
+  const setMode = useArcade((s) => s.setMode);
   const connected = useArcade((s) => s.connected);
   const setShowHelp = useArcade((s) => s.setShowHelp);
   const setShowLeaderboard = useArcade((s) => s.setShowLeaderboard);
+  const isDemo = mode === 'demo';
   const meta = view === 'lobby' ? undefined : CABINETS[view];
   return (
-    <header className="pointer-events-auto flex items-center gap-3">
-      <button className="btn btn-ghost !min-w-0 gap-3 px-4" onClick={() => setView('lobby')} title="Lobby (0 / Esc)">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#303134] text-[1.25rem]">🕹️</span>
+    <header className="pointer-events-auto flex items-center gap-2.5">
+      <button className="btn btn-ghost !min-w-0 gap-3 px-3.5" onClick={() => setView('lobby')} title={isDemo ? 'Cluster Overview (0 / Esc)' : 'Lobby (0 / Esc)'}>
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#303134] text-[1.2rem]">{isDemo ? '☸️' : '🕹️'}</span>
         <span className="flex flex-col items-start leading-none">
-          <span className="font-display text-[1.1rem] font-black tracking-[0.14em] text-white">
+          <span className="font-display text-[1.05rem] font-black tracking-[0.13em] text-white">
             <span className="text-[#4285f4]">G</span>
             <span className="text-[#ea4335]">K</span>
             <span className="text-[#fbbc04]">E</span>
-            <span className="ml-1.5 text-[#e8eaed]">AUTOSCALE ARCADE</span>
+            <span className="ml-1.5 text-[#e8eaed]">{isDemo ? 'AUTOSCALING LAB' : 'AUTOSCALE ARCADE'}</span>
           </span>
           <span className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">
             {world ? `${world.cluster.name} · GKE ${world.cluster.version}` : 'connecting…'}
@@ -34,33 +37,58 @@ export function TopBar({ world }: { world?: WorldState }) {
         {CABINET_IDS.map((id) => {
           const c = CABINETS[id];
           const active = view === id;
+          const title = isDemo ? c.demoTitle : c.title;
+          const subtitle = isDemo ? c.demoSubtitle : c.subtitle;
           return (
             <button
               key={id}
               className={`btn !min-w-0 flex-col gap-0 px-2.5 ${active ? 'btn-accent' : 'btn-ghost'}`}
               style={{ '--btn-accent': c.accent } as React.CSSProperties}
               onClick={() => setView(id)}
-              title={`${c.title} (${c.key})`}
+              title={`${title} (${c.key})`}
             >
-              <span className="text-[0.88rem] leading-tight">
+              <span className="text-[0.86rem] leading-tight">
                 <span className="kbd mr-1 opacity-70">{c.key}</span>
-                {c.title}
+                {title}
               </span>
-              <span className={`text-[0.58rem] font-normal ${active ? 'text-black/70' : 'text-slate-400'}`}>{c.subtitle}</span>
+              <span className={`text-[0.58rem] font-normal ${active ? 'text-black/70' : 'text-slate-400'}`}>{subtitle}</span>
             </button>
           );
         })}
       </nav>
-      <div className="ml-auto flex gap-1">
+      <div className="ml-auto flex items-center gap-1.5">
         {meta && (
-          <div className="hidden max-w-[22rem] flex-col justify-center text-right lg:flex">
-            <span className="font-mono text-[0.7rem] text-slate-300">{meta.feature}</span>
-            <span className="text-[0.7rem] text-slate-500">{cabinets[meta.id].hint}</span>
+          <div className="hidden max-w-[18rem] flex-col justify-center text-right 2xl:flex">
+            <span className="font-mono text-[0.68rem] text-slate-300">{isDemo ? meta.crd : meta.feature}</span>
+            <span className="truncate text-[0.68rem] text-slate-500">{isDemo ? meta.demoDescription : cabinets[meta.id].hint}</span>
           </div>
         )}
-        <button className="btn btn-ghost" title="Leaderboard" onClick={() => setShowLeaderboard(true)}>
-          🏆
-        </button>
+        {/* Mode Switcher: Arcade vs Demo Lab */}
+        <div className="flex items-center rounded-xl border border-[#3c4043] bg-[#131314]/90 p-0.5 font-mono text-[0.72rem]" title="Switch between Arcade Game Mode and Pure Technical Demo Mode (M)">
+          <button
+            type="button"
+            onClick={() => setMode('arcade')}
+            className={`rounded-lg px-2.5 py-1.5 font-bold transition-colors ${
+              !isDemo ? 'bg-[#4285f4] text-[#131314] shadow' : 'text-[#9aa0a6] hover:text-white'
+            }`}
+          >
+            🕹️ Arcade
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('demo')}
+            className={`rounded-lg px-2.5 py-1.5 font-bold transition-colors ${
+              isDemo ? 'bg-[#34a853] text-[#131314] shadow' : 'text-[#9aa0a6] hover:text-white'
+            }`}
+          >
+            ☸️ Demo Lab
+          </button>
+        </div>
+        {!isDemo && (
+          <button className="btn btn-ghost" title="Leaderboard" onClick={() => setShowLeaderboard(true)}>
+            🏆
+          </button>
+        )}
         <button className="btn btn-ghost" title="Help (?)" onClick={() => setShowHelp(true)}>
           ?
         </button>
@@ -81,8 +109,10 @@ export function toggleFullscreen() {
 
 export function BottomBar({ world }: { world: WorldState }) {
   const view = useArcade((s) => s.view);
+  const mode = useArcade((s) => s.mode);
   const act = useArcade((s) => s.act);
   const busy = useArcade((s) => s.busy);
+  const isDemo = mode === 'demo';
   const sc = world.scenario;
   const meta = view === 'lobby' ? undefined : CABINETS[view];
   const Status = meta ? cabinets[meta.id].Status : undefined;
@@ -97,12 +127,12 @@ export function BottomBar({ world }: { world: WorldState }) {
         </button>
       ) : (
         <button className="btn btn-accent !min-w-0" style={{ '--btn-accent': accent } as React.CSSProperties} onClick={() => act('scenario.run', { name: meta ? meta.scenario : 'all' }, { label: 'Auto-run' })} disabled={busy['Auto-run']} title="Space">
-          ▶ {meta ? 'Auto-run demo' : 'Insert coin — play all'}
+          ▶ {meta ? (isDemo ? 'Run demo' : 'Auto-run demo') : isDemo ? 'Run all 7 demos' : 'Insert coin — play all'}
         </button>
       )}
       {!sc.running && meta && (
-        <button className="btn btn-ghost !min-w-0" onClick={() => act('scenario.run', { name: 'all' }, { label: 'Play all' })} title="Run every cabinet in order">
-          🪙 Play all
+        <button className="btn btn-ghost !min-w-0" onClick={() => act('scenario.run', { name: 'all' }, { label: 'Play all' })} title="Run every demo in order">
+          {isDemo ? '▶ Run all demos' : '🪙 Play all'}
         </button>
       )}
       <button className="btn btn-ghost !min-w-0" onClick={() => act('reset', meta ? { cabinet: meta.id } : {}, { label: 'Reset' })} disabled={busy['Reset']} title="R">
@@ -114,8 +144,12 @@ export function BottomBar({ world }: { world: WorldState }) {
           <>
             <div className="flex items-center gap-2 font-mono text-[0.7rem] text-slate-400">
               <span className="animate-blink text-amber-300">●</span>
-              {sc.attract ? 'ATTRACT MODE' : 'AUTO-RUN'} · {sc.name} · step {sc.step}/{sc.steps}
-              {!runningHere && sc.cabinet && <span className="text-slate-500">(in {CABINETS[sc.cabinet as keyof typeof CABINETS]?.title ?? sc.cabinet})</span>}
+              {sc.attract && !isDemo ? 'ATTRACT MODE' : isDemo ? 'LIVE DEMO SCENARIO' : 'AUTO-RUN'} · {sc.name} · step {sc.step}/{sc.steps}
+              {!runningHere && sc.cabinet && (
+                <span className="text-slate-500">
+                  (in {isDemo ? CABINETS[sc.cabinet as keyof typeof CABINETS]?.demoTitle : CABINETS[sc.cabinet as keyof typeof CABINETS]?.title ?? sc.cabinet})
+                </span>
+              )}
             </div>
             <div className="truncate text-[1.1rem] font-semibold text-slate-100">{sc.caption ?? '…'}</div>
             <div className="mt-1 h-1 w-full overflow-hidden rounded bg-white/10">
@@ -125,7 +159,15 @@ export function BottomBar({ world }: { world: WorldState }) {
         ) : sc.error ? (
           <div className="truncate text-[0.95rem] text-red-300">Scenario error: {sc.error}</div>
         ) : (
-          <div className="truncate text-[0.95rem] text-slate-400">{meta ? cabinets[meta.id].hint : 'Pick a cabinet, or press ▶ to play them all.'}</div>
+          <div className="truncate text-[0.95rem] text-slate-400">
+            {meta
+              ? isDemo
+                ? meta.demoDescription
+                : cabinets[meta.id].hint
+              : isDemo
+                ? 'Select a GKE autoscaling demo from the catalog or top bar, or press ▶ to run all 7 demos.'
+                : 'Pick a cabinet, or press ▶ to play them all.'}
+          </div>
         )}
       </div>
 
@@ -185,25 +227,31 @@ export function Toasts() {
 export function HelpOverlay() {
   const show = useArcade((s) => s.showHelp);
   const setShow = useArcade((s) => s.setShowHelp);
+  const isDemo = useArcade((s) => s.mode === 'demo');
   if (!show) return null;
   const rows: [string, string][] = [
-    ['1–7', 'open a cabinet'],
-    ['0 / Esc', 'lobby'],
-    ['Space', '▶ auto-run current cabinet'],
-    ['R', 'reset current cabinet'],
-    ['A', 'toggle attract mode'],
+    ['1–7', isDemo ? 'open a GKE autoscaling demo' : 'open a cabinet'],
+    ['0 / Esc', isDemo ? 'cluster overview & demo catalog' : 'lobby'],
+    ['Space', isDemo ? '▶ auto-run current demo' : '▶ auto-run current cabinet'],
+    ['R', isDemo ? 'reset current demo workload' : 'reset current cabinet'],
+    ['M', 'toggle Arcade Mode / Demo Lab'],
+    ...(!isDemo ? ([['A', 'toggle attract mode']] as [string, string][]) : []),
     ['F', 'fullscreen'],
-    ['← →', 'previous / next cabinet'],
+    ['← →', isDemo ? 'previous / next demo' : 'previous / next cabinet'],
     ['?', 'this help'],
   ];
   return (
-    <Modal onClose={() => setShow(false)} title="How to play">
+    <Modal onClose={() => setShow(false)} title={isDemo ? 'Keyboard shortcuts' : 'How to play'}>
       <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-[1rem]">
         {rows.map(([k, v]) => (
           <KeyRow key={k} k={k} v={v} />
         ))}
       </div>
-      <p className="mt-4 text-[0.9rem] text-slate-400">Every cabinet drives real objects on a GKE cluster. Nothing is faked: if a feature degrades, the HUD shows it.</p>
+      <p className="mt-4 text-[0.9rem] text-slate-400">
+        {isDemo
+          ? 'Every demo drives real Kubernetes objects on a GKE 1.37 cluster. Nothing is faked: all state is streamed from client-go informers.'
+          : 'Every cabinet drives real objects on a GKE cluster. Nothing is faked: if a feature degrades, the HUD shows it.'}
+      </p>
     </Modal>
   );
 }

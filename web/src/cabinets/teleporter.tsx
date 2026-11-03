@@ -195,59 +195,70 @@ function Controls({ world }: CabinetProps) {
     everMigrated.current = true;
   }
   const hearts = pet ? Math.max(1, pet.lives + 1) : 0;
+  const isDemo = useArcade((s) => s.mode === 'demo');
 
   return (
     <>
       <MissionCard
         accent={ACCENT}
-        goal="Teleport the stateful pet-0 pod across gVisor nodes without losing its in-memory counter, score, or bouncing ball trajectory!"
+        goal={
+          isDemo
+            ? 'Checkpoint the running gVisor pod (pet-0) memory and network stack to Cloud Storage via GKE Pod Snapshots and restore it onto another gVisor node with zero state loss.'
+            : 'Teleport the stateful pet-0 pod across gVisor nodes without losing its in-memory counter, score, or bouncing ball trajectory!'
+        }
         win="Shortest migration downtime (ms) with in-memory ticks & lives preserved"
         steps={[
           {
             label: 'Watch pet-0 accumulate in-memory state',
-            detail: `Ticks (${pet ? pet.ticks.toLocaleString() : '—'}) & ball velocity live purely in RAM — a normal restart wipes them to 0.`,
+            detail: `Ticks (${pet ? pet.ticks.toLocaleString() : '—'}) live purely in RAM — a standard pod eviction wipes them to 0.`,
             done: (pet?.ticks ?? 0) >= 20,
             active: (pet?.ticks ?? 0) < 20,
           },
           {
-            label: 'Drag & drop pet-0 onto another ⬡ gVisor node',
-            detail: 'Or press Random teleport to trigger a GKE Pod Snapshot to GCS.',
+            label: isDemo ? 'Trigger live migration to another ⬡ gVisor node' : 'Drag & drop pet-0 onto another ⬡ gVisor node',
+            detail: isDemo
+              ? 'Drag the pod cube or click Migrate to launch a PodMigrationJob and GCS PodSnapshot.'
+              : 'Or press Random teleport to trigger a GKE Pod Snapshot to GCS.',
             done: migrating || everMigrated.current || (pet?.lives ?? 0) > 0,
             active: !migrating && !everMigrated.current && (pet?.ticks ?? 0) >= 20,
           },
           {
             label: 'Verify memory survived on the new node',
-            detail: 'pet-0 resumes from its exact tick count and gains a ♥ life!',
+            detail: isDemo ? 'pet-0 resumes from its exact in-memory tick count on the destination node.' : 'pet-0 resumes from its exact tick count and gains a ♥ life!',
             done: everMigrated.current || (pet?.lives ?? 0) > 0,
             active: migrating,
           },
         ]}
       />
 
-      <ControlGroup title="Arcade pet · pet-0 (in-memory state)">
+      <ControlGroup title={isDemo ? 'Stateful Workload · pet-0 (In-Memory State)' : 'Arcade pet · pet-0 (in-memory state)'}>
         <div className="flex flex-wrap gap-2">
-          <Stat label="ticks" value={<span className={migrating || !live ? 'text-[#fbbc04]' : 'text-[#81c995]'}>{pet ? pet.ticks.toLocaleString() : '—'}</span>} sub={live ? '10/s live' : 'no telemetry'} />
-          <Stat label="score" value={pet?.score.toLocaleString() ?? '—'} />
-          <Stat label="lives" value={pet ? '♥'.repeat(Math.min(hearts, 8)) + (hearts > 8 ? `+${hearts - 8}` : '') : '—'} tone="text-[#ea4335]" sub={pet ? `${pet.lives} migration${pet.lives === 1 ? '' : 's'} survived` : 'migrations survived'} />
+          <Stat label="ticks" value={<span className={migrating || !live ? 'text-[#fbbc04]' : 'text-[#81c995]'}>{pet ? pet.ticks.toLocaleString() : '—'}</span>} sub={live ? '10/s live in RAM' : 'no telemetry'} />
+          {!isDemo && <Stat label="score" value={pet?.score.toLocaleString() ?? '—'} />}
+          {isDemo ? (
+            <Stat label="migrations" value={pet?.lives ?? 0} tone="text-[#34a853]" sub="restored from GCS" />
+          ) : (
+            <Stat label="lives" value={pet ? '♥'.repeat(Math.min(hearts, 8)) + (hearts > 8 ? `+${hearts - 8}` : '') : '—'} tone="text-[#ea4335]" sub={pet ? `${pet.lives} migration${pet.lives === 1 ? '' : 's'} survived` : 'migrations survived'} />
+          )}
           <Stat label="uptime" value={pet ? stopwatch(pet.uptimeSec * 1000).slice(0, 5) : '—'} sub={pet ? `since ${ago(pet.bornAt, now)} ago` : undefined} />
         </div>
-        <PetBall />
+        {!isDemo && <PetBall />}
         <div className="font-mono text-[0.75rem] text-slate-400">
           on <span className="text-slate-100">{t.pet.node ? shortNodeName(t.pet.node) : '—'}</span>
           {t.pet.connected ? <span className="ml-2 text-[#34a853]">● connected</span> : <span className="ml-2 text-[#fbbc04]">○ disconnected</span>}
         </div>
       </ControlGroup>
 
-      <ControlGroup title="Teleport">
+      <ControlGroup title={isDemo ? 'Live Migration Trigger' : 'Teleport'}>
         <div className="rounded-xl border border-[#fbbc04]/40 bg-[#fbbc04]/10 p-3 text-[0.85rem] text-[#fde293]">
-          <b>Drag the glowing yellow pet cube</b> onto another ⬡ gVisor node slab. The server pins the StatefulSet to that node and evicts <code>pet-0</code>; the pod-migration webhook checkpoints RAM to GCS and restores it on the target node.
+          <b>{isDemo ? 'Drag the running pod cube' : 'Drag the glowing yellow pet cube'}</b> onto another ⬡ gVisor node slab. The server pins the StatefulSet to that node and evicts <code>pet-0</code>; the pod-migration webhook checkpoints RAM to GCS and restores it on the target node.
         </div>
         <div className="grid grid-cols-2 gap-2">
           <ActionButton action="teleporter.random" accent={ACCENT} disabled={migrating || t.gvisorNodes.length < 2} label="Random teleport">
-            🎲 Random teleport
+            {isDemo ? '⇄ Migrate Node' : '🎲 Random teleport'}
           </ActionButton>
           <ActionButton action="reset" body={{ cabinet: 'teleporter' }} disabled={migrating} label="Reset teleporter">
-            ↺ Play again
+            {isDemo ? '↺ Reset Workload' : '↺ Play again'}
           </ActionButton>
         </div>
         <div className="flex flex-wrap gap-2">

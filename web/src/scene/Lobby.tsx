@@ -8,10 +8,11 @@ import { ClusterScene } from './ClusterScene';
 import { computeLayout } from './layout';
 import { CameraRig } from './Stage';
 
-/** Lobby: six arcade cabinets in a semicircle around a live overview of the whole cluster. */
+/** Lobby: seven arcade cabinets in a semicircle around a live overview of the whole cluster (or pure 3D cluster overview in Demo Lab mode). */
 export function Lobby({ world }: { world: WorldState }) {
   const layout = useMemo(() => computeLayout(world.nodes, world.pods, {}), [world.nodes, world.pods]);
   const setView = useArcade((s) => s.setView);
+  const isDemo = useArcade((s) => s.mode === 'demo');
   const clusterW = layout.bounds.maxX - layout.bounds.minX;
   const spacing = 4.9;
   const rowW = spacing * (CABINET_IDS.length - 1);
@@ -21,6 +22,28 @@ export function Lobby({ world }: { world: WorldState }) {
     () => ({ ...layout, bounds: { minX: -halfW - 2, maxX: halfW + 2, minZ: clusterZ + layout.bounds.minZ, maxZ: 5 } }),
     [layout, halfW, clusterZ],
   );
+
+  if (isDemo) {
+    const demoFramed = {
+      ...layout,
+      bounds: {
+        ...layout.bounds,
+        minX: layout.bounds.minX - 7,
+        maxX: layout.bounds.maxX + 2,
+      },
+    };
+    return (
+      <>
+        <CameraRig layout={demoFramed} viewKey="demo-overview" />
+        <ClusterScene layout={layout} showLabels={true} />
+        <Html position={[0, 0.3, layout.bounds.maxZ + 1.4]} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
+          <div className="whitespace-nowrap rounded-full border border-[#34a853]/60 bg-[#131314]/90 px-4 py-1.5 font-mono text-[0.75rem] font-bold tracking-[0.18em] text-[#81c995]">
+            ☸️ LIVE GKE 1.37 CLUSTER · {world.nodes.length} NODES · {world.pods.filter((p) => !p.buffer).length} PODS
+          </div>
+        </Html>
+      </>
+    );
+  }
 
   return (
     <>

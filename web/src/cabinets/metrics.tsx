@@ -74,6 +74,7 @@ function MetricGaugeTower({
 
   const targetY = 0.18 + (targetPods - 1) * pitch + stepH / 2;
   const topY = 0.18 + MAX_PODS * pitch + 0.45;
+  const isDemo = useArcade((s) => s.mode === 'demo');
 
   return (
     <group position={position}>
@@ -87,16 +88,16 @@ function MetricGaugeTower({
       {Array.from({ length: MAX_PODS }, (_, i) => {
         const idx = i + 1;
         const y = 0.18 + i * pitch + stepH / 2;
-        const isTarget = idx === targetPods;
+        const isTarget = !isDemo && idx === targetPods;
         const isReady = idx <= readyPods;
         const isDesired = idx <= desiredPods;
-        const isOver = idx > targetPods && (isReady || isDesired);
+        const isOver = !isDemo && idx > targetPods && (isReady || isDesired);
         const color = isOver
           ? RED
           : isTarget && onTarget
             ? ACCENT
             : isReady
-              ? onTarget
+              ? isDemo || onTarget
                 ? ACCENT
                 : BLUE
               : isDesired
@@ -117,25 +118,32 @@ function MetricGaugeTower({
         );
       })}
 
-      {/* Target ring around the target pod tier */}
-      <mesh ref={ringRef} position={[0, targetY, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.96, 0.055, 16, 48]} />
-        <meshBasicMaterial color={onTarget ? ACCENT : YELLOW} toneMapped={false} />
-      </mesh>
-
-      <pointLight position={[0, targetY, 0.8]} color={onTarget ? ACCENT : YELLOW} intensity={onTarget ? 7 : 3.5} distance={5} />
+      {/* Target ring around the target pod tier (Arcade mode only) */}
+      {!isDemo && (
+        <>
+          <mesh ref={ringRef} position={[0, targetY, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.96, 0.055, 16, 48]} />
+            <meshBasicMaterial color={onTarget ? ACCENT : YELLOW} toneMapped={false} />
+          </mesh>
+          <pointLight position={[0, targetY, 0.8]} color={onTarget ? ACCENT : YELLOW} intensity={onTarget ? 7 : 3.5} distance={5} />
+        </>
+      )}
 
       <Html position={[0, topY, 0]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
         <div
           className={`whitespace-nowrap rounded-full border px-3.5 py-1 font-mono text-[0.78rem] font-bold shadow-lg ${
-            onTarget
+            isDemo || onTarget
               ? 'border-[#34a853] bg-[#131314]/90 text-[#81c995]'
               : desiredPods > targetPods
                 ? 'border-[#ea4335]/70 bg-[#131314]/90 text-[#f28b82]'
                 : 'border-[#fbbc04]/60 bg-[#131314]/90 text-[#fde293]'
           }`}
         >
-          {onTarget ? `🎯 BULLSEYE · ${readyPods}/${targetPods} PODS` : `🎯 TARGET ${targetPods} PODS · ${load} req/s → ${readyPods}/${MAX_PODS}`}
+          {isDemo
+            ? `arcade_metric_load: ${load} req/s → ${readyPods}/${MAX_PODS} pods`
+            : onTarget
+              ? `🎯 BULLSEYE · ${readyPods}/${targetPods} PODS`
+              : `🎯 TARGET ${targetPods} PODS · ${load} req/s → ${readyPods}/${MAX_PODS}`}
         </div>
       </Html>
     </group>
@@ -168,6 +176,7 @@ function Controls({ world }: CabinetProps) {
   const m = world.cabinets.metrics;
   const act = useArcade((st) => st.act);
   const busyLoad = useArcade((st) => st.busy['metrics.load']);
+  const isDemo = useArcade((st) => st.mode === 'demo');
   const now = useNow(250);
 
   const [load, setLoad] = useState(m.load);
@@ -195,78 +204,131 @@ function Controls({ world }: CabinetProps) {
     <>
       <MissionCard
         accent={ACCENT}
-        goal="Adjust the custom Prometheus metric load slider (arcade_metric_load) so GKE's AutoscalingMetric + HorizontalPodAutoscaler scale metric-worker to the exact target pod count (never more than 10 pods)."
+        goal={
+          isDemo
+            ? "Expose custom Prometheus metric arcade_metric_load via GKE's AutoscalingMetric (autoscaling.gke.io/v1beta1) to HorizontalPodAutoscaler/metric-worker (minReplicas: 1, maxReplicas: 10, targetAverageValue: 50 req/s)."
+            : "Adjust the custom Prometheus metric load slider (arcade_metric_load) so GKE's AutoscalingMetric + HorizontalPodAutoscaler scale metric-worker to the exact target pod count (never more than 10 pods)."
+        }
         win={`Hit the exact target pod count (${m.targetPods} pods, ≤ 10) — ${m.hits} bullseye${m.hits === 1 ? '' : 's'} scored`}
-        steps={[
-          {
-            label: `Slide metric load into the ${m.targetPods}-pod band (${targetBandText})`,
-            detail: `HPA formula: desired = clamp(ceil(load / ${avg}), 1, 10).`,
-            done: sliderInBand || m.onTarget,
-            active: !sliderInBand && !m.onTarget,
-          },
-          {
-            label: `AutoscalingMetric feeds HPA (desiredReplicas = ${m.targetPods})`,
-            detail: `AutoscalingMetric/load-tuner exposes ${m.metricName} to HPA/metric-worker.`,
-            done: hpaMatched || m.onTarget,
-            active: sliderInBand && !hpaMatched,
-          },
-          {
-            label: `Bullseye! Hit ${m.targetPods} Ready pods (max 10)`,
-            detail: 'All target replicas reach Ready=True on the 3D cluster stage.',
-            done: m.onTarget,
-            active: hpaMatched && !m.onTarget,
-          },
-        ]}
+        steps={
+          isDemo
+            ? [
+                {
+                  label: `Adjust custom Prometheus metric load (${load} req/s)`,
+                  detail: `Updates arcade_metric_load on /metrics (scraped by Managed Service for Prometheus).`,
+                  done: m.load !== 50 || m.readyPods > 1,
+                  active: m.load === 50 && m.readyPods <= 1,
+                },
+                {
+                  label: `AutoscalingMetric feeds HPA (desired = ${m.hpa.desired})`,
+                  detail: `HPA computes clamp(ceil(${load} / ${avg}), 1, 10) = ${previewDesired} replicas.`,
+                  done: m.hpa.desired === previewDesired && m.readyPods > 1,
+                  active: m.hpa.desired !== previewDesired,
+                },
+                {
+                  label: `Deployment/metric-worker scales to ${m.hpa.desired} Ready pods (max 10)`,
+                  detail: 'All desired replicas reach Ready=True on the cluster.',
+                  done: m.readyPods === m.hpa.desired && m.readyPods > 1,
+                  active: m.readyPods !== m.hpa.desired,
+                },
+              ]
+            : [
+                {
+                  label: `Slide metric load into the ${m.targetPods}-pod band (${targetBandText})`,
+                  detail: `HPA formula: desired = clamp(ceil(load / ${avg}), 1, 10).`,
+                  done: sliderInBand || m.onTarget,
+                  active: !sliderInBand && !m.onTarget,
+                },
+                {
+                  label: `AutoscalingMetric feeds HPA (desiredReplicas = ${m.targetPods})`,
+                  detail: `AutoscalingMetric/load-tuner exposes ${m.metricName} to HPA/metric-worker.`,
+                  done: hpaMatched || m.onTarget,
+                  active: sliderInBand && !hpaMatched,
+                },
+                {
+                  label: `Bullseye! Hit ${m.targetPods} Ready pods (max 10)`,
+                  detail: 'All target replicas reach Ready=True on the 3D cluster stage.',
+                  done: m.onTarget,
+                  active: hpaMatched && !m.onTarget,
+                },
+              ]
+        }
       />
 
-      <ControlGroup title="Metric Load Slider & Target Challenge (1–10 Pods)">
-        {/* Scoreboard row */}
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#131314]/80 px-3 py-2">
-          <div>
-            <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">🎯 Target</div>
-            <div className="font-mono text-[1.75rem] font-black leading-none text-[#fbbc04]">
-              {m.targetPods} <span className="text-[0.8rem] font-bold text-[#9aa0a6]">/ {MAX_PODS}</span>
+      <ControlGroup title={isDemo ? 'Prometheus Metric Load Generator (arcade_metric_load)' : 'Metric Load Slider & Target Challenge (1–10 Pods)'}>
+        {/* Scoreboard / Status row */}
+        {isDemo ? (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#131314]/80 px-3 py-2">
+            <div>
+              <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">Metric Load</div>
+              <div className="font-mono text-[1.75rem] font-black leading-none text-[#8ab4f8]">
+                {load} <span className="text-[0.8rem] font-bold text-[#9aa0a6]">req/s</span>
+              </div>
+              <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">avg {avg} req/s per pod</div>
             </div>
-            <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">{targetBandText}</div>
-          </div>
-          <div className="text-center">
-            <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">⚡ Ready Pods</div>
-            <div
-              className="font-mono text-[1.75rem] font-black leading-none"
-              style={{ color: m.onTarget ? ACCENT : m.readyPods > m.targetPods ? RED : BLUE }}
-            >
-              {m.readyPods}
+            <div className="text-center">
+              <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">HPA Desired</div>
+              <div className="font-mono text-[1.75rem] font-black leading-none text-[#fde293]">
+                {previewDesired} <span className="text-[0.8rem] font-bold text-[#9aa0a6]">/ {MAX_PODS}</span>
+              </div>
+              <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">⌈{load} / {avg}⌉</div>
             </div>
-            <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">desired {m.hpa.desired}</div>
+            <div className="text-right">
+              <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">Ready Replicas</div>
+              <div className="font-mono text-[1.75rem] font-black leading-none text-[#81c995]">{m.readyPods}</div>
+              <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">maxReplicas: 10</div>
+            </div>
           </div>
-          <div className="text-right">
-            <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">🏆 Bullseyes</div>
-            <div className="font-mono text-[1.75rem] font-black leading-none text-[#81c995]">{m.hits}</div>
-            <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">hits</div>
-          </div>
-        </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#131314]/80 px-3 py-2">
+              <div>
+                <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">🎯 Target</div>
+                <div className="font-mono text-[1.75rem] font-black leading-none text-[#fbbc04]">
+                  {m.targetPods} <span className="text-[0.8rem] font-bold text-[#9aa0a6]">/ {MAX_PODS}</span>
+                </div>
+                <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">{targetBandText}</div>
+              </div>
+              <div className="text-center">
+                <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">⚡ Ready Pods</div>
+                <div
+                  className="font-mono text-[1.75rem] font-black leading-none"
+                  style={{ color: m.onTarget ? ACCENT : m.readyPods > m.targetPods ? RED : BLUE }}
+                >
+                  {m.readyPods}
+                </div>
+                <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">desired {m.hpa.desired}</div>
+              </div>
+              <div className="text-right">
+                <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">🏆 Bullseyes</div>
+                <div className="font-mono text-[1.75rem] font-black leading-none text-[#81c995]">{m.hits}</div>
+                <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">hits</div>
+              </div>
+            </div>
 
-        {/* Metric Load readout + HPA formula */}
-        <div className="flex items-end justify-between">
-          <div>
-            <div className="font-mono text-[2rem] font-black leading-none" style={{ color: sliderInBand ? ACCENT : BLUE }}>
-              {load}
-              <span className="ml-1.5 text-[0.9rem] font-bold text-[#9aa0a6]">req/s</span>
+            {/* Metric Load readout + HPA formula */}
+            <div className="flex items-end justify-between">
+              <div>
+                <div className="font-mono text-[2rem] font-black leading-none" style={{ color: sliderInBand ? ACCENT : BLUE }}>
+                  {load}
+                  <span className="ml-1.5 text-[0.9rem] font-bold text-[#9aa0a6]">req/s</span>
+                </div>
+                <div className="mt-0.5 font-mono text-[0.68rem] text-[#9aa0a6]">
+                  metric <span className="text-[#e8eaed]">arcade_metric_load</span> · avg <span className="text-[#e8eaed]">{perPodAvg}</span>/{avg} per pod
+                </div>
+              </div>
+              <div className="text-right font-mono text-[0.74rem]">
+                <div className="text-[#9aa0a6]">HPA formula</div>
+                <div className="font-bold text-[#e8eaed]">
+                  ⌈{load} / {avg}⌉ →{' '}
+                  <span style={{ color: previewDesired === m.targetPods ? ACCENT : previewDesired > m.targetPods ? RED : YELLOW }}>
+                    {previewDesired} pod{previewDesired === 1 ? '' : 's'}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="mt-0.5 font-mono text-[0.68rem] text-[#9aa0a6]">
-              metric <span className="text-[#e8eaed]">arcade_metric_load</span> · avg <span className="text-[#e8eaed]">{perPodAvg}</span>/{avg} per pod
-            </div>
-          </div>
-          <div className="text-right font-mono text-[0.74rem]">
-            <div className="text-[#9aa0a6]">HPA formula</div>
-            <div className="font-bold text-[#e8eaed]">
-              ⌈{load} / {avg}⌉ →{' '}
-              <span style={{ color: previewDesired === m.targetPods ? ACCENT : previewDesired > m.targetPods ? RED : YELLOW }}>
-                {previewDesired} pod{previewDesired === 1 ? '' : 's'}
-              </span>
-            </div>
-          </div>
-        </div>
+          </>
+        )}
 
         {/* Slider (0 - 500 req/s) */}
         <input
@@ -278,7 +340,7 @@ function Controls({ world }: CabinetProps) {
           value={load}
           disabled={busyLoad}
           aria-label="custom metric load req/s"
-          style={{ '--pct': `${(load / MAX_LOAD) * 100}%`, '--slider-accent': sliderInBand ? ACCENT : BLUE } as React.CSSProperties}
+          style={{ '--pct': `${(load / MAX_LOAD) * 100}%`, '--slider-accent': isDemo || sliderInBand ? ACCENT : BLUE } as React.CSSProperties}
           onPointerDown={() => (dragging.current = true)}
           onChange={(e) => setLoad(Number(e.target.value))}
           onPointerUp={(e) => commit(Number((e.target as HTMLInputElement).value))}
@@ -291,7 +353,7 @@ function Controls({ world }: CabinetProps) {
         <div className="grid grid-cols-10 gap-1">
           {Array.from({ length: MAX_PODS }, (_, i) => {
             const podNum = i + 1;
-            const isTarget = podNum === m.targetPods;
+            const isTarget = !isDemo && podNum === m.targetPods;
             const isCurrent = podNum === previewDesired;
             const bandLoad = podNum * avg - Math.floor(avg / 2);
             return (
@@ -305,7 +367,7 @@ function Controls({ world }: CabinetProps) {
                   void act('metrics.load', { load: bandLoad }, { label: `metric load → ${bandLoad} req/s` });
                 }}
                 className={`flex flex-col items-center rounded border py-1 font-mono text-[0.65rem] transition-all ${
-                  isTarget && isCurrent
+                  (isDemo && isCurrent) || (isTarget && isCurrent)
                     ? 'border-[#34a853] bg-[#34a853]/30 font-black text-white shadow-[0_0_10px_rgba(52,168,83,0.6)]'
                     : isTarget
                       ? 'border-[#fbbc04] bg-[#fbbc04]/20 font-bold text-[#fde293]'
@@ -320,38 +382,46 @@ function Controls({ world }: CabinetProps) {
           })}
         </div>
 
-        {/* Live feedback banner + New Target button */}
-        <div
-          className={`rounded-lg border px-2.5 py-1.5 font-mono text-[0.72rem] font-semibold ${
-            m.onTarget
-              ? 'border-[#34a853]/60 bg-[#34a853]/15 text-[#81c995]'
-              : previewDesired === m.targetPods
-                ? 'border-[#fbbc04]/60 bg-[#fbbc04]/15 text-[#fde293]'
-                : previewDesired < m.targetPods
-                  ? 'border-[#4285f4]/60 bg-[#4285f4]/15 text-[#8ab4f8]'
-                  : 'border-[#ea4335]/60 bg-[#ea4335]/15 text-[#f28b82]'
-          }`}
-        >
-          {m.onTarget
-            ? `🎯 BULLSEYE! ceil(${m.load} / ${avg}) = ${m.targetPods} pods Ready!`
-            : previewDesired === m.targetPods
-              ? `⏳ On target band! ceil(${load} / ${avg}) = ${m.targetPods} pods (${m.readyPods}/${m.targetPods} Ready)…`
-              : previewDesired < m.targetPods
-                ? `▲ Too low: ceil(${load} / ${avg}) = ${previewDesired} pod${previewDesired === 1 ? '' : 's'} (need ${m.targetPods} → slide to ${targetBandText})`
-                : `▼ Too high: ceil(${load} / ${avg}) = ${previewDesired} pods (need ${m.targetPods} → slide to ${targetBandText})`}
-        </div>
+        {/* Live feedback banner + New Target button (Arcade mode only) */}
+        {!isDemo && (
+          <>
+            <div
+              className={`rounded-lg border px-2.5 py-1.5 font-mono text-[0.72rem] font-semibold ${
+                m.onTarget
+                  ? 'border-[#34a853]/60 bg-[#34a853]/15 text-[#81c995]'
+                  : previewDesired === m.targetPods
+                    ? 'border-[#fbbc04]/60 bg-[#fbbc04]/15 text-[#fde293]'
+                    : previewDesired < m.targetPods
+                      ? 'border-[#4285f4]/60 bg-[#4285f4]/15 text-[#8ab4f8]'
+                      : 'border-[#ea4335]/60 bg-[#ea4335]/15 text-[#f28b82]'
+              }`}
+            >
+              {m.onTarget
+                ? `🎯 BULLSEYE! ceil(${m.load} / ${avg}) = ${m.targetPods} pods Ready!`
+                : previewDesired === m.targetPods
+                  ? `⏳ On target band! ceil(${load} / ${avg}) = ${m.targetPods} pods (${m.readyPods}/${m.targetPods} Ready)…`
+                  : previewDesired < m.targetPods
+                    ? `▲ Too low: ceil(${load} / ${avg}) = ${previewDesired} pod${previewDesired === 1 ? '' : 's'} (need ${m.targetPods} → slide to ${targetBandText})`
+                    : `▼ Too high: ceil(${load} / ${avg}) = ${previewDesired} pods (need ${m.targetPods} → slide to ${targetBandText})`}
+            </div>
 
-        <div className="flex items-center gap-2">
-          <ActionButton action="metrics.target" body={{}} accent={YELLOW} label="New random target (1–10)" className="flex-1 text-[0.88rem]">
-            🎯 New Target (1–10)
-          </ActionButton>
-        </div>
+            <div className="flex items-center gap-2">
+              <ActionButton action="metrics.target" body={{}} accent={YELLOW} label="New random target (1–10)" className="flex-1 text-[0.88rem]">
+                🎯 New Target (1–10)
+              </ActionButton>
+            </div>
+          </>
+        )}
       </ControlGroup>
 
       <ControlGroup title="HorizontalPodAutoscaler · metric-worker (max 10)">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={m.onTarget ? 'bg-[#34a853]/25 text-[#81c995] ring-1 ring-[#34a853]/60' : 'bg-[#4285f4]/20 text-[#8ab4f8]'}>
-            {m.onTarget ? `🎯 On Target (${m.readyPods}/${m.targetPods} pods)` : `⚡ Scaling (${m.readyPods} Ready / ${m.targetPods} Target)`}
+          <Badge tone={isDemo || m.onTarget ? 'bg-[#34a853]/25 text-[#81c995] ring-1 ring-[#34a853]/60' : 'bg-[#4285f4]/20 text-[#8ab4f8]'}>
+            {isDemo
+              ? `⚡ ScalingActive=True (${m.readyPods}/${m.hpa.desired} Ready)`
+              : m.onTarget
+                ? `🎯 On Target (${m.readyPods}/${m.targetPods} pods)`
+                : `⚡ Scaling (${m.readyPods} Ready / ${m.targetPods} Target)`}
           </Badge>
           <Badge tone="bg-[#303134] text-[#e8eaed]">min {m.hpa.min} · max {m.hpa.max}</Badge>
           <span className="font-mono text-[0.7rem] text-[#9aa0a6]">
@@ -362,9 +432,9 @@ function Controls({ world }: CabinetProps) {
         {/* 10-slot visual pod meter */}
         <div className="flex flex-col gap-1">
           <div className="flex justify-between font-mono text-[0.7rem] text-[#9aa0a6]">
-            <span>pods ready vs target ({m.targetPods})</span>
+            <span>{isDemo ? 'ready replicas (max 10)' : `pods ready vs target (${m.targetPods})`}</span>
             <span>
-              <span className={m.onTarget ? 'font-bold text-[#81c995]' : 'text-[#e8eaed]'}>{m.readyPods}</span> / {MAX_PODS} max
+              <span className={isDemo || m.onTarget ? 'font-bold text-[#81c995]' : 'text-[#e8eaed]'}>{m.readyPods}</span> / {MAX_PODS} max
             </span>
           </div>
           <div className="flex h-6 gap-1 rounded-lg bg-[#131314] p-1">
@@ -372,8 +442,8 @@ function Controls({ world }: CabinetProps) {
               const slot = i + 1;
               const ready = slot <= m.readyPods;
               const desired = slot <= m.hpa.desired;
-              const isTarget = slot === m.targetPods;
-              const over = slot > m.targetPods && (ready || desired);
+              const isTarget = !isDemo && slot === m.targetPods;
+              const over = !isDemo && slot > m.targetPods && (ready || desired);
               return (
                 <div
                   key={slot}
@@ -381,7 +451,7 @@ function Controls({ world }: CabinetProps) {
                     over
                       ? 'bg-[#ea4335] text-white'
                       : ready
-                        ? m.onTarget
+                        ? isDemo || m.onTarget
                           ? 'bg-[#34a853] text-black shadow-[0_0_8px_rgba(52,168,83,0.8)]'
                           : 'bg-[#4285f4] text-white'
                         : desired
@@ -407,6 +477,7 @@ function Controls({ world }: CabinetProps) {
 
 function Status({ world }: CabinetProps) {
   const m = world.cabinets.metrics;
+  const isDemo = useArcade((s) => s.mode === 'demo');
   return (
     <>
       <Stat
@@ -414,15 +485,23 @@ function Status({ world }: CabinetProps) {
         value={<span className="text-[#8ab4f8]">{m.load} req/s</span>}
         sub={`target avg ${m.targetAverage}/pod`}
       />
-      <Stat
-        label="target pods"
-        value={
-          <span className={m.onTarget ? 'text-[#81c995]' : 'text-[#fde293]'}>
-            {m.readyPods} / {m.targetPods} 🎯
-          </span>
-        }
-        sub={`${m.hits} bullseye${m.hits === 1 ? '' : 's'} (max 10)`}
-      />
+      {isDemo ? (
+        <Stat
+          label="replicas"
+          value={<span className="text-[#81c995]">{m.readyPods} / {MAX_PODS}</span>}
+          sub={`desired ${m.hpa.desired} (max 10)`}
+        />
+      ) : (
+        <Stat
+          label="target pods"
+          value={
+            <span className={m.onTarget ? 'text-[#81c995]' : 'text-[#fde293]'}>
+              {m.readyPods} / {m.targetPods} 🎯
+            </span>
+          }
+          sub={`${m.hits} bullseye${m.hits === 1 ? '' : 's'} (max 10)`}
+        />
+      )}
     </>
   );
 }
@@ -431,6 +510,7 @@ function Status({ world }: CabinetProps) {
 
 function hud(world: WorldState): HudSection[] {
   const m = world.cabinets.metrics;
+  const isDemo = useArcade.getState().mode === 'demo';
   const now = Date.now();
   const pods = metricPods(world);
   const avg = m.targetAverage || 50;
@@ -442,7 +522,7 @@ function hud(world: WorldState): HudSection[] {
       command: 'kubectl get autoscalingmetric load-tuner -n arcade-metrics',
       columns: ['NAME', 'METRIC', 'HPA-NAME', 'VALUE', 'TARGET-AVG'],
       rows: [['load-tuner', 'arcade_metric_load', m.metricName, `${m.load} req/s`, `${avg} / pod`]],
-      highlight: () => (m.onTarget ? 'text-[#81c995]' : 'text-[#8ab4f8]'),
+      highlight: () => (isDemo || m.onTarget ? 'text-[#81c995]' : 'text-[#8ab4f8]'),
     },
     {
       kind: 'table',
@@ -456,11 +536,11 @@ function hud(world: WorldState): HudSection[] {
           `${m.load}/${avg} (avg)`,
           String(m.hpa.min),
           String(m.hpa.max),
-          `${m.readyPods} (target ${m.targetPods})`,
+          isDemo ? `${m.readyPods}/${m.hpa.desired}` : `${m.readyPods} (target ${m.targetPods})`,
           hpaAge ? ago(hpaAge, now) : '—',
         ],
       ],
-      highlight: () => (m.onTarget ? 'text-[#81c995]' : 'text-[#fde293]'),
+      highlight: () => (isDemo || m.onTarget ? 'text-[#81c995]' : 'text-[#fde293]'),
     },
     {
       kind: 'yaml',
@@ -524,7 +604,7 @@ function hud(world: WorldState): HudSection[] {
     },
     {
       kind: 'kv',
-      title: 'Metric Dialer Challenge',
+      title: isDemo ? 'AutoscalingMetric Status' : 'Metric Dialer Challenge',
       items: [
         ['apiVersion', 'autoscaling.gke.io/v1beta1'],
         ['metric', 'arcade_metric_load'],
@@ -532,8 +612,12 @@ function hud(world: WorldState): HudSection[] {
         ['current load', `${m.load} req/s`, 'text-[#8ab4f8]'],
         ['targetAverageValue', `${avg} req/s per pod`],
         ['formula', `clamp(ceil(${m.load} / ${avg}), ${m.hpa.min}, ${m.hpa.max}) = ${m.hpa.desired} pods`],
-        ['target challenge', `${m.targetPods} pods (max 10)`, m.onTarget ? 'text-[#81c995]' : 'text-[#fde293]'],
-        ['bullseyes scored', String(m.hits), 'text-[#81c995]'],
+        ...(!isDemo
+          ? ([
+              ['target challenge', `${m.targetPods} pods (max 10)`, m.onTarget ? 'text-[#81c995]' : 'text-[#fde293]'],
+              ['bullseyes scored', String(m.hits), 'text-[#81c995]'],
+            ] as [string, string, string?][])
+          : []),
         ['lastScale', m.hpa.lastScale ? `${durationShort(Math.max(0, now - Date.parse(m.hpa.lastScale)))} ago` : '—'],
       ],
     },
