@@ -16,7 +16,6 @@ const YELLOW = '#fbbc04'; // Google Yellow
 const RED = '#ea4335';    // Google Red
 const MAX_PODS = 10;
 const MAX_LOAD = 500;
-const LOAD_PRESETS = [50, 100, 200, 300, 400, 500];
 
 function metricPods(world: WorldState): Pod[] {
   return world.pods.filter((p) => p.cabinet === 'metrics' && p.workload === 'metric-worker');
@@ -220,72 +219,45 @@ function Controls({ world }: CabinetProps) {
         ]}
       />
 
-      <ControlGroup title="Target Challenge · Hit the Pod Count (1–10)">
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#131314]/80 px-3 py-2.5">
+      <ControlGroup title="Metric Load Slider & Target Challenge (1–10 Pods)">
+        {/* Scoreboard row */}
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#131314]/80 px-3 py-2">
           <div>
-            <div className="font-mono text-[0.65rem] uppercase tracking-wider text-[#9aa0a6]">🎯 Target Pods</div>
-            <div className="font-mono text-[2.2rem] font-black leading-none text-[#fbbc04]">
-              {m.targetPods} <span className="text-[0.95rem] font-bold text-[#9aa0a6]">/ {MAX_PODS}</span>
+            <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">🎯 Target</div>
+            <div className="font-mono text-[1.75rem] font-black leading-none text-[#fbbc04]">
+              {m.targetPods} <span className="text-[0.8rem] font-bold text-[#9aa0a6]">/ {MAX_PODS}</span>
             </div>
-            <div className="mt-1 font-mono text-[0.68rem] text-[#9aa0a6]">win band: {targetBandText}</div>
+            <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">{targetBandText}</div>
           </div>
           <div className="text-center">
-            <div className="font-mono text-[0.65rem] uppercase tracking-wider text-[#9aa0a6]">⚡ Ready Pods</div>
+            <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">⚡ Ready Pods</div>
             <div
-              className="font-mono text-[2.2rem] font-black leading-none"
+              className="font-mono text-[1.75rem] font-black leading-none"
               style={{ color: m.onTarget ? ACCENT : m.readyPods > m.targetPods ? RED : BLUE }}
             >
               {m.readyPods}
             </div>
-            <div className="mt-1 font-mono text-[0.68rem] text-[#9aa0a6]">desired {m.hpa.desired}</div>
+            <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">desired {m.hpa.desired}</div>
           </div>
           <div className="text-right">
-            <div className="font-mono text-[0.65rem] uppercase tracking-wider text-[#9aa0a6]">🏆 Bullseyes</div>
-            <div className="font-mono text-[2.2rem] font-black leading-none text-[#81c995]">{m.hits}</div>
-            <div className="mt-1 font-mono text-[0.68rem] text-[#9aa0a6]">hits</div>
+            <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#9aa0a6]">🏆 Bullseyes</div>
+            <div className="font-mono text-[1.75rem] font-black leading-none text-[#81c995]">{m.hits}</div>
+            <div className="mt-0.5 font-mono text-[0.65rem] text-[#9aa0a6]">hits</div>
           </div>
         </div>
 
-        {/* Live feedback banner */}
-        <div
-          className={`rounded-lg border px-3 py-2 font-mono text-[0.76rem] font-semibold ${
-            m.onTarget
-              ? 'border-[#34a853]/60 bg-[#34a853]/15 text-[#81c995]'
-              : previewDesired === m.targetPods
-                ? 'border-[#fbbc04]/60 bg-[#fbbc04]/15 text-[#fde293]'
-                : previewDesired < m.targetPods
-                  ? 'border-[#4285f4]/60 bg-[#4285f4]/15 text-[#8ab4f8]'
-                  : 'border-[#ea4335]/60 bg-[#ea4335]/15 text-[#f28b82]'
-          }`}
-        >
-          {m.onTarget
-            ? `🎯 BULLSEYE! ceil(${m.load} / ${avg}) = ${m.targetPods} pods Ready! Click "New Target" for another round.`
-            : previewDesired === m.targetPods
-              ? `⏳ On target band! ceil(${load} / ${avg}) = ${m.targetPods} pods (${m.readyPods}/${m.targetPods} Ready)…`
-              : previewDesired < m.targetPods
-                ? `▲ Too low: ceil(${load} / ${avg}) = ${previewDesired} pod${previewDesired === 1 ? '' : 's'} (need ${m.targetPods} pods → slide to ${targetBandText})`
-                : `▼ Too high: ceil(${load} / ${avg}) = ${previewDesired} pods (need ${m.targetPods} pods → slide down to ${targetBandText})`}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <ActionButton action="metrics.target" body={{}} accent={YELLOW} label="New random target (1–10)" className="flex-1 text-[0.95rem]">
-            🎯 New Target (1–10)
-          </ActionButton>
-        </div>
-      </ControlGroup>
-
-      <ControlGroup title="AutoscalingMetric/load-tuner · Metric Load Slider">
+        {/* Metric Load readout + HPA formula */}
         <div className="flex items-end justify-between">
           <div>
-            <div className="font-mono text-[2.4rem] font-black leading-none" style={{ color: sliderInBand ? ACCENT : BLUE }}>
+            <div className="font-mono text-[2rem] font-black leading-none" style={{ color: sliderInBand ? ACCENT : BLUE }}>
               {load}
-              <span className="ml-1.5 text-[1rem] font-bold text-[#9aa0a6]">req/s</span>
+              <span className="ml-1.5 text-[0.9rem] font-bold text-[#9aa0a6]">req/s</span>
             </div>
-            <div className="mt-1 font-mono text-[0.72rem] text-[#9aa0a6]">
-              metric <span className="text-[#e8eaed]">arcade_metric_load</span> · avg <span className="text-[#e8eaed]">{perPodAvg}</span> / {avg} req/s per pod
+            <div className="mt-0.5 font-mono text-[0.68rem] text-[#9aa0a6]">
+              metric <span className="text-[#e8eaed]">arcade_metric_load</span> · avg <span className="text-[#e8eaed]">{perPodAvg}</span>/{avg} per pod
             </div>
           </div>
-          <div className="text-right font-mono text-[0.78rem]">
+          <div className="text-right font-mono text-[0.74rem]">
             <div className="text-[#9aa0a6]">HPA formula</div>
             <div className="font-bold text-[#e8eaed]">
               ⌈{load} / {avg}⌉ →{' '}
@@ -296,6 +268,7 @@ function Controls({ world }: CabinetProps) {
           </div>
         </div>
 
+        {/* Slider (0 - 500 req/s) */}
         <input
           type="range"
           className="slider"
@@ -347,20 +320,31 @@ function Controls({ world }: CabinetProps) {
           })}
         </div>
 
-        <div className="grid grid-cols-6 gap-1.5">
-          {LOAD_PRESETS.map((n) => (
-            <ActionButton
-              key={n}
-              action="metrics.load"
-              body={{ load: n }}
-              label={`metric load → ${n} req/s`}
-              accent={m.load === n ? ACCENT : undefined}
-              className="!min-h-[2.3rem] !px-1.5 font-mono text-[0.75rem]"
-              onDone={() => setLoad(n)}
-            >
-              {n}
-            </ActionButton>
-          ))}
+        {/* Live feedback banner + New Target button */}
+        <div
+          className={`rounded-lg border px-2.5 py-1.5 font-mono text-[0.72rem] font-semibold ${
+            m.onTarget
+              ? 'border-[#34a853]/60 bg-[#34a853]/15 text-[#81c995]'
+              : previewDesired === m.targetPods
+                ? 'border-[#fbbc04]/60 bg-[#fbbc04]/15 text-[#fde293]'
+                : previewDesired < m.targetPods
+                  ? 'border-[#4285f4]/60 bg-[#4285f4]/15 text-[#8ab4f8]'
+                  : 'border-[#ea4335]/60 bg-[#ea4335]/15 text-[#f28b82]'
+          }`}
+        >
+          {m.onTarget
+            ? `🎯 BULLSEYE! ceil(${m.load} / ${avg}) = ${m.targetPods} pods Ready!`
+            : previewDesired === m.targetPods
+              ? `⏳ On target band! ceil(${load} / ${avg}) = ${m.targetPods} pods (${m.readyPods}/${m.targetPods} Ready)…`
+              : previewDesired < m.targetPods
+                ? `▲ Too low: ceil(${load} / ${avg}) = ${previewDesired} pod${previewDesired === 1 ? '' : 's'} (need ${m.targetPods} → slide to ${targetBandText})`
+                : `▼ Too high: ceil(${load} / ${avg}) = ${previewDesired} pods (need ${m.targetPods} → slide to ${targetBandText})`}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ActionButton action="metrics.target" body={{}} accent={YELLOW} label="New random target (1–10)" className="flex-1 text-[0.88rem]">
+            🎯 New Target (1–10)
+          </ActionButton>
         </div>
       </ControlGroup>
 
