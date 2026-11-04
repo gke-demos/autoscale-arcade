@@ -23,11 +23,13 @@ export function Stage({ children, autoRotate = false }: { children: ReactNode; a
     >
       <PerspectiveCamera makeDefault fov={38} position={[0, 14, 22]} near={0.1} far={200} />
       <fog attach="fog" args={['#131314', 45, 110]} />
-      <ambientLight intensity={0.75} />
-      <hemisphereLight args={['#e8eaed', '#202124', 0.85]} />
-      <directionalLight position={[12, 20, 8]} intensity={2.2} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-25} shadow-camera-right={25} shadow-camera-top={25} shadow-camera-bottom={-25} />
+      <ambientLight intensity={0.8} />
+      <hemisphereLight args={['#e8f0fe', '#14171f', 0.9]} />
+      <directionalLight position={[12, 20, 8]} intensity={2.4} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-25} shadow-camera-right={25} shadow-camera-top={25} shadow-camera-bottom={-25} />
+      <directionalLight position={[-10, 14, -8]} intensity={0.85} color="#8ab4f8" />
       <pointLight position={[-15, 8, -10]} intensity={55} color="#4285f4" />
       <pointLight position={[15, 6, -12]} intensity={45} color="#34a853" />
+      <pointLight position={[0, 12, 12]} intensity={32} color="#f8f9fa" />
       <Grid position={[0, -0.6, 0]} args={[120, 120]} cellSize={1} cellThickness={0.6} cellColor="#202124" sectionSize={6} sectionThickness={1.1} sectionColor="#3c4043" fadeDistance={60} fadeStrength={1.5} infiniteGrid />
       <ContactShadows position={[0, -0.59, 0]} opacity={0.5} scale={60} blur={2.4} far={6} color="#000000" />
       <OrbitControls makeDefault enabled={!dragging} enablePan={false} minDistance={8} maxDistance={60} minPolarAngle={0.35} maxPolarAngle={Math.PI / 2.25} autoRotate={autoRotate && !dragging} autoRotateSpeed={0.5} enableDamping dampingFactor={0.08} />

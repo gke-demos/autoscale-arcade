@@ -89,7 +89,7 @@ function Cabinet({ id, position, rotation, world, onOpen }: { id: CabinetId; pos
         onClick={(e) => { e.stopPropagation(); onOpen(); }}
         onPointerOver={(e) => { e.stopPropagation(); hover.current = true; document.body.style.cursor = 'pointer'; }}
         onPointerOut={() => { hover.current = false; document.body.style.cursor = 'auto'; }}>
-        <meshStandardMaterial color="#202124" roughness={0.45} metalness={0.3} emissive={meta.accent} emissiveIntensity={0.05} />
+        <meshPhysicalMaterial color="#171a22" roughness={0.22} metalness={0.3} clearcoat={0.9} clearcoatRoughness={0.1} emissive={meta.accent} emissiveIntensity={0.07} />
       </RoundedBox>
       {/* screen */}
       <mesh position={[0, 2.5, 1.12]} rotation={[-0.25, 0, 0]}>
@@ -104,11 +104,11 @@ function Cabinet({ id, position, rotation, world, onOpen }: { id: CabinetId; pos
       {/* control deck */}
       <mesh position={[0, 1.35, 1.3]} rotation={[-0.9, 0, 0]}>
         <boxGeometry args={[2.8, 0.9, 0.2]} />
-        <meshStandardMaterial color="#303134" />
+        <meshPhysicalMaterial color="#20242e" roughness={0.2} metalness={0.25} clearcoat={0.8} />
       </mesh>
       <mesh position={[-0.7, 1.75, 1.55]}>
         <sphereGeometry args={[0.18, 16, 16]} />
-        <meshStandardMaterial color="#ea4335" emissive="#ea4335" emissiveIntensity={0.4} />
+        <meshPhysicalMaterial color="#fbbc04" emissive="#fbbc04" emissiveIntensity={0.45} roughness={0.1} clearcoat={1} />
       </mesh>
       <mesh position={[0.6, 1.72, 1.5]}>
         <cylinderGeometry args={[0.2, 0.2, 0.1, 20]} />

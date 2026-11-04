@@ -10,7 +10,7 @@ import type { NitroLane, Pod, WorldState } from '../types';
 import { ActionButton, Badge, ControlGroup, MissionCard, Stat, eventsSection, nodeTable, shortNodeName, useCabinetLayout, useNow } from './common';
 import type { CabinetModule, CabinetProps, HudSection } from './types';
 
-const ACCENT = '#ea4335';
+const ACCENT = '#4285f4';
 const STOCK = '#9aa0a6';
 
 function lanePod(world: WorldState, lane: NitroLane): Pod | undefined {
@@ -38,18 +38,18 @@ function Scene({ world }: CabinetProps) {
     <>
       <ClusterScene layout={layout} />
       <group position={[0, 0, z0]}>
-        {/* track */}
+        {/* smoked-glass race track */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.44, 1.2]} receiveShadow>
           <planeGeometry args={[trackLen + 2, 4.2]} />
-          <meshStandardMaterial color="#202124" roughness={0.95} />
+          <meshPhysicalMaterial color="#141821" roughness={0.18} metalness={0.2} clearcoat={0.9} clearcoatRoughness={0.1} transparent opacity={0.92} />
         </mesh>
-        {/* finish line */}
+        {/* finish line (Google Green & Gold) */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[trackLen / 2, -0.43, 1.2]}>
-          <planeGeometry args={[0.4, 4.2]} />
-          <meshBasicMaterial color="#f8f9fa" />
+          <planeGeometry args={[0.35, 4.2]} />
+          <meshBasicMaterial color="#34a853" transparent opacity={0.85} />
         </mesh>
         <Html position={[trackLen / 2, 0.6, -1]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="whitespace-nowrap font-mono text-[0.7rem] tracking-[0.3em] text-slate-300">🏁 READY=TRUE</div>
+          <div className="whitespace-nowrap font-mono text-[0.7rem] tracking-[0.3em] text-emerald-300">🏁 READY=TRUE</div>
         </Html>
         {lanes.map((lane, i) => (
           <Lane key={lane.name} lane={lane} index={i} pod={lanePod(world, lane)} trackLen={trackLen} progress={lane.readyAt ? 1 : Math.min(0.97, (laneMs(lane, now) ?? 0) / maxMs)} winner={race?.winner === lane.name} />
@@ -74,7 +74,7 @@ function Lane({ lane, index, pod, trackLen, progress, winner }: { lane: NitroLan
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.42, z]}>
         <planeGeometry args={[trackLen, 1.6]} />
-        <meshBasicMaterial color={color} transparent opacity={0.08} />
+        <meshBasicMaterial color={color} transparent opacity={lane.name === 'nitro' ? 0.16 : 0.08} />
       </mesh>
       <Html position={[-trackLen / 2 - 1.2, 0.2, z]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
         <div className="whitespace-nowrap text-right font-mono text-[0.75rem]" style={{ color }}>
@@ -85,7 +85,7 @@ function Lane({ lane, index, pod, trackLen, progress, winner }: { lane: NitroLan
       <group ref={g} position={[x, SLAB.h / 2 + size / 2 + 0.05, z]}>
         <mesh castShadow>
           <boxGeometry args={[size, size, size]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={pod?.ready ? 0.6 : 0.25} />
+          <meshPhysicalMaterial color={color} emissive={color} emissiveIntensity={pod?.ready ? 0.45 : 0.2} roughness={0.1} metalness={0.12} clearcoat={1} clearcoatRoughness={0.06} reflectivity={1} />
         </mesh>
         {boosted && <Flame pl={{ pod: pod!, pos: [0, 0, 0], size }} scale={1.4} />}
         {pod && !pod.ready && !boosted && (
@@ -181,8 +181,8 @@ function Controls({ world }: CabinetProps) {
                   <span className="font-black tracking-widest" style={{ color }}>
                     {l.name.toUpperCase()}
                   </span>
-                  {l.boosted && <Badge tone="bg-rose-500/30 text-rose-100">🔥 boost ×{n.vpa.factor}</Badge>}
-                  {race?.winner === l.name && <Badge tone="bg-amber-400/30 text-amber-100">{isDemo ? '✓ Ready first' : '🏆 winner'}</Badge>}
+                  {l.boosted && <Badge tone="bg-[#fbbc04]/25 text-[#fde293]">⚡ boost ×{n.vpa.factor}</Badge>}
+                  {race?.winner === l.name && <Badge tone="bg-emerald-500/30 text-emerald-100">{isDemo ? '✓ Ready first' : '🏆 winner'}</Badge>}
                   <span className={`ml-auto font-mono text-[1.3rem] font-bold ${l.readyAt ? 'text-lime-300' : ms !== undefined ? 'text-amber-300' : 'text-slate-500'}`}>{ms !== undefined ? stopwatch(ms) : '--:--.-'}</span>
                 </div>
                 <div className="mt-1 grid grid-cols-3 gap-1 font-mono text-[0.68rem] text-slate-400">
@@ -205,7 +205,7 @@ function Controls({ world }: CabinetProps) {
       </ControlGroup>
       <ControlGroup title="VerticalPodAutoscaler/nitro">
         <div className="flex flex-wrap gap-2">
-          <Stat label="startupBoost" value={`×${n.vpa.factor}`} tone="text-rose-200" sub={`durationSeconds ${n.vpa.durationSeconds}`} />
+          <Stat label="startupBoost" value={`×${n.vpa.factor}`} tone="text-[#fde293]" sub={`durationSeconds ${n.vpa.durationSeconds}`} />
           <Stat label="updateMode" value={<span className="text-[0.95rem]">{n.vpa.updateMode}</span>} />
         </div>
       </ControlGroup>
@@ -221,7 +221,7 @@ function Status({ world }: CabinetProps) {
   const stock = race.lanes.find((l) => l.name === 'stock');
   return (
     <>
-      <Stat label="nitro" value={<span className={nitro?.readyAt ? 'text-lime-300' : 'text-amber-300'}>{secs(nitro ? laneMs(nitro, now) : undefined)}</span>} tone="text-rose-200" />
+      <Stat label="nitro" value={<span className={nitro?.readyAt ? 'text-lime-300' : 'text-amber-300'}>{secs(nitro ? laneMs(nitro, now) : undefined)}</span>} tone="text-[#8ab4f8]" />
       <Stat label="stock" value={<span className={stock?.readyAt ? 'text-lime-300' : 'text-amber-300'}>{secs(stock ? laneMs(stock, now) : undefined)}</span>} />
     </>
   );
@@ -241,7 +241,7 @@ function hud(world: WorldState): HudSection[] {
       command: 'kubectl get pods -n arcade-nitro -o custom-columns=NAME:.metadata.name,CPU-REQ:.spec.containers[0].resources.requests.cpu,CPU-ACTUAL:.status.containerStatuses[0].resources.requests.cpu',
       columns: ['NAME', 'READY', 'STATUS', 'CPU-REQ', 'CPU-ACTUAL', 'BOOST', 'AGE'],
       rows: pods.map((p) => [p.name, p.ready ? '1/1' : '0/1', p.deleting ? 'Terminating' : p.phase, p.cpu.request, p.cpu.actual ?? '', p.boost ? (p.boost.active ? `active (${p.boost.cpuOriginal}→${p.boost.cpuRequest})` : 'ended') : '', ago(p.created, now)]),
-      highlight: (r) => (r[5].startsWith('active') ? 'text-rose-200' : r[1] === '0/1' ? 'text-amber-300' : undefined),
+      highlight: (r) => (r[5].startsWith('active') ? 'text-[#8ab4f8]' : r[1] === '0/1' ? 'text-amber-300' : undefined),
     },
     {
       kind: 'yaml',

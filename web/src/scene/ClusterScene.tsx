@@ -1,14 +1,26 @@
-import { Html, Instance, Instances, RoundedBox } from '@react-three/drei';
+import { Html, Instance, Instances, RoundedBox, RoundedBoxGeometry } from '@react-three/drei';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { Node, Pod } from '../types';
 import { SLAB, type IslandLayout, type Layout, type NodeLayout, type PodLayout } from './layout';
-import { BEAM_COLOR, CREATING_COLOR, DRAIN_COLOR, FLAME_COLOR, GHOST_COLOR, PENDING_COLOR, familyColor, podColor } from './palette';
+import {
+  BEAM_COLOR,
+  CREATING_COLOR,
+  DRAIN_COLOR,
+  FLAME_COLOR,
+  FLAME_CORE_COLOR,
+  GHOST_COLOR,
+  PENDING_COLOR,
+  familyColor,
+  nodeGlassColor,
+  podColor,
+} from './palette';
 
 // ---------------------------------------------------------------------------
-// Shared 3D vocabulary (docs/design.md §3): islands, node slabs, pod cubes,
-// ghosts, flames, beams. Everything here is driven purely by WorldState.
+// Shared 3D vocabulary (docs/design.md §3): obsidian-glass islands, smoked
+// glass node slabs with neon Google-color edge rims, beveled jewel-glass pod
+// cubes, icy ghost slots, solar/cyan boost flames, and particle beams.
 // ---------------------------------------------------------------------------
 
 export type NodeHighlight = 'valid' | 'target' | 'origin' | undefined;
@@ -31,8 +43,30 @@ export interface SceneProps {
 }
 
 const tmpColor = new THREE.Color();
+const SLAB_EDGES_GEO = new THREE.EdgesGeometry(new THREE.BoxGeometry(SLAB.w, SLAB.h, SLAB.d));
+const SLAB_INNER_BEZEL_GEO = new THREE.EdgesGeometry(new THREE.BoxGeometry(SLAB.w - 0.16, 0.004, SLAB.d - 0.16));
+const POD_EDGES_GEO = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
 
-// Diagonal stripe texture for Spot nodes, generated once.
+// Soft diagonal glass specular reflection gradient for NodeSlab top faces.
+let sheenTex: THREE.CanvasTexture | undefined;
+function glassSheenTexture() {
+  if (sheenTex) return sheenTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createLinearGradient(0, 0, 128, 128);
+  g.addColorStop(0, 'rgba(255,255,255,0.28)');
+  g.addColorStop(0.32, 'rgba(255,255,255,0.04)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.16)');
+  g.addColorStop(0.68, 'rgba(255,255,255,0.02)');
+  g.addColorStop(1, 'rgba(255,255,255,0.20)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  sheenTex = new THREE.CanvasTexture(c);
+  return sheenTex;
+}
+
+// Laser-etched diagonal micro-stripe texture for Spot nodes, generated once.
 let stripeTex: THREE.CanvasTexture | undefined;
 function stripeTexture() {
   if (stripeTex) return stripeTex;
@@ -40,9 +74,9 @@ function stripeTexture() {
   c.width = c.height = 128;
   const ctx = c.getContext('2d')!;
   ctx.clearRect(0, 0, 128, 128);
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-  ctx.lineWidth = 10;
-  for (let i = -128; i < 256; i += 32) {
+  ctx.strokeStyle = 'rgba(232,240,254,0.36)';
+  ctx.lineWidth = 4;
+  for (let i = -128; i < 256; i += 24) {
     ctx.beginPath();
     ctx.moveTo(i, 128);
     ctx.lineTo(i + 128, 0);
@@ -50,7 +84,7 @@ function stripeTexture() {
   }
   stripeTex = new THREE.CanvasTexture(c);
   stripeTex.wrapS = stripeTex.wrapT = THREE.RepeatWrapping;
-  stripeTex.repeat.set(3, 3);
+  stripeTex.repeat.set(4, 4);
   return stripeTex;
 }
 
@@ -59,16 +93,28 @@ function stripeTexture() {
 export function Island({ island, showLabels = true }: { island: IslandLayout; showLabels?: boolean }) {
   const [cx, cz] = island.center;
   const anyCreating = island.nodes.some((n) => n.node.creating);
+  const rimGeo = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(Math.max(0.2, island.w - 0.14), 0.01, Math.max(0.2, island.d - 0.14))),
+    [island.w, island.d],
+  );
   return (
     <group position={[cx, 0, cz]}>
       <RoundedBox args={[island.w, 0.3, island.d]} radius={0.15} smoothness={3} position={[0, -0.45, 0]} receiveShadow>
-        <meshStandardMaterial color="#202124" roughness={0.85} metalness={0.15} emissive={anyCreating ? CREATING_COLOR : '#131314'} emissiveIntensity={anyCreating ? 0.08 : 0.4} />
+        <meshPhysicalMaterial
+          color="#10131a"
+          roughness={0.18}
+          metalness={0.28}
+          clearcoat={0.95}
+          clearcoatRoughness={0.12}
+          reflectivity={0.95}
+          emissive={anyCreating ? CREATING_COLOR : '#090b10'}
+          emissiveIntensity={anyCreating ? 0.12 : 0.25}
+        />
       </RoundedBox>
-      {/* subtle edge */}
-      <mesh position={[0, -0.3, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[Math.max(island.w, island.d) * 0.02, Math.max(island.w, island.d) * 0.021, 4]} />
-        <meshBasicMaterial color="#3c4043" transparent opacity={0} />
-      </mesh>
+      {/* crisp perimeter glass hairline */}
+      <lineSegments position={[0, -0.298, 0]} geometry={rimGeo}>
+        <lineBasicMaterial color={anyCreating ? CREATING_COLOR : '#3c4043'} transparent opacity={0.65} />
+      </lineSegments>
       {showLabels && (
         <Html position={[0, -0.2, island.d / 2 + 0.35]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
           <div className="whitespace-nowrap text-center" style={{ transform: 'translateY(-10%)' }}>
@@ -98,36 +144,57 @@ export function NodeSlab({
 }) {
   const n = nl.node;
   const ref = useRef<THREE.Mesh>(null);
-  const matRef = useRef<THREE.MeshStandardMaterial>(null);
+  const matRef = useRef<THREE.MeshPhysicalMaterial>(null);
+  const edgeMatRef = useRef<THREE.LineBasicMaterial>(null);
   const ringRef = useRef<THREE.Mesh>(null);
-  const base = n.creating ? CREATING_COLOR : familyColor(n.machineFamily);
+  const glassBody = n.creating ? '#241b0b' : nodeGlassColor(n.machineFamily);
+  const rimColor = n.creating ? CREATING_COLOR : familyColor(n.machineFamily);
   const draining = n.deleting || n.unschedulable;
   const util = n.cpu.allocatable ? Math.min(1, n.cpu.requested / n.cpu.allocatable) : 0;
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
     const m = matRef.current;
+    const em = edgeMatRef.current;
     if (!m) return;
     if (n.creating) {
       // amber creation pulse
       m.emissive.set(CREATING_COLOR);
-      m.emissiveIntensity = 0.35 + 0.35 * Math.sin(t * 4);
+      m.emissiveIntensity = 0.25 + 0.25 * Math.sin(t * 4);
       m.opacity = 0.55 + 0.15 * Math.sin(t * 4);
+      if (em) {
+        em.color.set(CREATING_COLOR);
+        em.opacity = 0.95;
+      }
     } else if (draining) {
-      // red drain dissolve
+      // red drain dissolve (negative state)
       m.emissive.set(DRAIN_COLOR);
-      m.emissiveIntensity = 0.5 + 0.3 * Math.sin(t * 6);
-      m.opacity = n.deleting ? 0.25 + 0.2 * Math.sin(t * 3) : 0.6;
+      m.emissiveIntensity = 0.38 + 0.25 * Math.sin(t * 6);
+      m.opacity = n.deleting ? 0.25 + 0.2 * Math.sin(t * 3) : 0.58;
+      if (em) {
+        em.color.set(DRAIN_COLOR);
+        em.opacity = 0.95;
+      }
     } else if (n.suspended) {
       m.emissive.set('#4285f4');
-      m.emissiveIntensity = 0.08;
+      m.emissiveIntensity = 0.04;
       m.opacity = 0.35;
+      if (em) {
+        em.color.set('#4285f4');
+        em.opacity = 0.45;
+      }
     } else {
-      tmpColor.set(highlight === 'target' ? '#81c995' : highlight === 'valid' ? '#34a853' : highlight === 'origin' ? '#fbbc04' : base);
+      const targetRim = highlight === 'target' ? '#81c995' : highlight === 'valid' ? '#34a853' : highlight === 'origin' ? '#fbbc04' : rimColor;
+      tmpColor.set(targetRim);
       m.emissive.lerp(tmpColor, 0.15);
-      const target = highlight === 'target' ? 0.6 : highlight === 'valid' ? 0.3 + 0.12 * Math.sin(t * 5) : highlight === 'origin' ? 0.4 : selected ? 0.7 : 0.4;
+      // Low resting emissive (0.06) preserves the dark smoked-glass body so jewel pods pop on top
+      const target = highlight === 'target' ? 0.42 : highlight === 'valid' ? 0.22 + 0.08 * Math.sin(t * 5) : highlight === 'origin' ? 0.28 : selected ? 0.38 : 0.06;
       m.emissiveIntensity += (target - m.emissiveIntensity) * 0.2;
-      m.opacity += (0.9 - m.opacity) * 0.1;
+      m.opacity += (0.78 - m.opacity) * 0.1;
+      if (em) {
+        em.color.lerp(tmpColor, 0.2);
+        em.opacity = selected || highlight ? 1.0 : 0.88;
+      }
     }
     if (ringRef.current) {
       const s = highlight === 'target' ? 1.08 + 0.03 * Math.sin(t * 10) : 1.04;
@@ -138,6 +205,7 @@ export function NodeSlab({
 
   return (
     <group position={nl.pos}>
+      {/* Beveled smoked-glass slab body */}
       <mesh
         ref={ref}
         castShadow
@@ -147,34 +215,54 @@ export function NodeSlab({
           onClick?.(n);
         }}
       >
-        <boxGeometry args={[SLAB.w, SLAB.h, SLAB.d]} />
-        <meshStandardMaterial ref={matRef} color={base} emissive={base} emissiveIntensity={0.2} roughness={0.25} metalness={0.3} transparent opacity={0.9} />
+        <RoundedBoxGeometry args={[SLAB.w, SLAB.h, SLAB.d]} radius={0.055} smoothness={3} />
+        <meshPhysicalMaterial
+          ref={matRef}
+          color={glassBody}
+          emissive={rimColor}
+          emissiveIntensity={0.06}
+          roughness={0.08}
+          metalness={0.22}
+          clearcoat={1}
+          clearcoatRoughness={0.05}
+          reflectivity={1}
+          transparent
+          opacity={0.78}
+        />
       </mesh>
-      {/* glass top sheen */}
-      <mesh position={[0, SLAB.h / 2 + 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[SLAB.w - 0.1, SLAB.d - 0.1]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.08} />
+      {/* Luminous Google-color neon perimeter edge rim */}
+      <lineSegments geometry={SLAB_EDGES_GEO}>
+        <lineBasicMaterial ref={edgeMatRef} color={draining ? DRAIN_COLOR : rimColor} transparent opacity={0.88} toneMapped={false} />
+      </lineSegments>
+      {/* Recessed inner top glass bezel */}
+      <lineSegments position={[0, SLAB.h / 2 + 0.003, 0]} geometry={SLAB_INNER_BEZEL_GEO}>
+        <lineBasicMaterial color={draining ? DRAIN_COLOR : rimColor} transparent opacity={0.42} toneMapped={false} />
+      </lineSegments>
+      {/* Diagonal glass reflection sheen on top surface */}
+      <mesh position={[0, SLAB.h / 2 + 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[SLAB.w - 0.16, SLAB.d - 0.16]} />
+        <meshBasicMaterial map={glassSheenTexture()} transparent opacity={0.16} depthWrite={false} />
       </mesh>
-      {/* spot stripe */}
+      {/* Laser-etched diagonal micro-stripes for Spot nodes */}
       {n.spot && (
-        <mesh position={[0, SLAB.h / 2 + 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[SLAB.w - 0.1, SLAB.d - 0.1]} />
-          <meshBasicMaterial map={stripeTexture()} transparent opacity={0.35} depthWrite={false} />
+        <mesh position={[0, SLAB.h / 2 + 0.008, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[SLAB.w - 0.16, SLAB.d - 0.16]} />
+          <meshBasicMaterial map={stripeTexture()} transparent opacity={0.28} depthWrite={false} />
         </mesh>
       )}
-      {/* utilisation bar on the front face */}
+      {/* Utilisation bar on the front face (Green → Yellow; Red reserved for draining) */}
       <mesh position={[-SLAB.w / 2 + (SLAB.w * util) / 2, -SLAB.h / 2 + 0.04, SLAB.d / 2 + 0.01]}>
         <planeGeometry args={[Math.max(0.01, SLAB.w * util), 0.07]} />
-        <meshBasicMaterial color={util > 0.85 ? '#ea4335' : '#34a853'} />
+        <meshBasicMaterial color={draining ? DRAIN_COLOR : util > 0.85 ? '#fbbc04' : '#34a853'} toneMapped={false} />
       </mesh>
-      {/* highlight ring */}
+      {/* Highlight ring */}
       <mesh ref={ringRef} position={[0, -SLAB.h / 2 + 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <ringGeometry args={[SLAB.w * 0.68, SLAB.w * 0.74, 48]} />
         <meshBasicMaterial color={highlight === 'target' ? '#ffffff' : '#34a853'} transparent opacity={0.9} side={THREE.DoubleSide} />
       </mesh>
       {showLabel && (
         <Html position={[0, SLAB.h / 2 + 0.05, SLAB.d / 2 - 0.25]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="flex items-center gap-1 whitespace-nowrap rounded-md bg-black/70 px-1.5 py-0.5 font-mono text-[0.62rem] text-slate-200">
+          <div className="flex items-center gap-1 whitespace-nowrap rounded-md border border-white/15 bg-[#0b0e14]/85 px-1.5 py-0.5 font-mono text-[0.62rem] text-slate-100 shadow-sm backdrop-blur-sm">
             {n.suspended && <span title="Suspended">❄</span>}
             {n.creating && <span className="text-amber-300 animate-blink">●</span>}
             {draining && <span className="text-red-400">⛔</span>}
@@ -280,34 +368,51 @@ export function Pods({ layout, onPodPointerDown, onPodClick, draggable, hiddenPo
   const ghosts = all.filter((p) => p.pod.buffer);
   return (
     <>
+      {/* Beveled high-gloss jewel-acrylic pod cubes (no milky white emissive washout) */}
       <Instances limit={600} range={solid.length} castShadow receiveShadow frustumCulled={false}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial roughness={0.35} metalness={0.15} emissive="#ffffff" emissiveIntensity={0.18} toneMapped={false} />
+        <RoundedBoxGeometry args={[1, 1, 1]} radius={0.14} smoothness={3} />
+        <meshPhysicalMaterial
+          roughness={0.08}
+          metalness={0.14}
+          clearcoat={1}
+          clearcoatRoughness={0.04}
+          reflectivity={1}
+        />
         {solid.map((pl) => (
           <PodInstance key={pl.pod.uid} pl={pl} draggable={draggable?.(pl.pod)} hidden={hiddenPod === pl.pod.uid} onPointerDown={draggable?.(pl.pod) ? onPodPointerDown : undefined} onClick={onPodClick} />
         ))}
       </Instances>
+      {/* Translucent ice-glass ghost capacity slots */}
       <Instances limit={200} range={ghosts.length} frustumCulled={false}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial transparent opacity={0.22} roughness={0.1} metalness={0.4} emissive={GHOST_COLOR} emissiveIntensity={0.35} depthWrite={false} />
+        <RoundedBoxGeometry args={[1, 1, 1]} radius={0.12} smoothness={2} />
+        <meshPhysicalMaterial
+          transparent
+          opacity={0.24}
+          roughness={0.08}
+          metalness={0.2}
+          clearcoat={1}
+          clearcoatRoughness={0.06}
+          emissive={GHOST_COLOR}
+          emissiveIntensity={0.35}
+          depthWrite={false}
+        />
         {ghosts.map((pl) => (
           <GhostInstance key={pl.pod.uid} pl={pl} />
         ))}
       </Instances>
-      {/* ghost wire outlines */}
+      {/* Ghost wire outlines */}
       {ghosts.map((pl) => (
-        <lineSegments key={`w-${pl.pod.uid}`} position={pl.pos} scale={pl.size}>
-          <edgesGeometry args={[new THREE.BoxGeometry(1, 1, 1)]} />
-          <lineBasicMaterial color={GHOST_COLOR} transparent opacity={0.5} />
+        <lineSegments key={`w-${pl.pod.uid}`} position={pl.pos} scale={pl.size} geometry={POD_EDGES_GEO}>
+          <lineBasicMaterial color={GHOST_COLOR} transparent opacity={0.62} />
         </lineSegments>
       ))}
-      {/* pending halos */}
+      {/* Pending halos */}
       {all
         .filter((p) => !p.pod.ready && !p.pod.deleting && !p.pod.buffer && p.pod.phase !== 'Succeeded')
         .map((pl) => (
           <Halo key={`h-${pl.pod.uid}`} pl={pl} />
         ))}
-      {/* nitro flames */}
+      {/* Startup boost solar/cyan plasma flames */}
       {all
         .filter((p) => p.pod.boost?.active)
         .map((pl) => (
@@ -332,7 +437,7 @@ function Halo({ pl }: { pl: PodLayout }) {
   return (
     <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[0.45, 0.55, 32]} />
-      <meshBasicMaterial color={unschedulable ? '#fb923c' : PENDING_COLOR} transparent opacity={0.6} side={THREE.DoubleSide} depthWrite={false} />
+      <meshBasicMaterial color={unschedulable ? '#fbbc04' : PENDING_COLOR} transparent opacity={0.65} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   );
 }
@@ -355,8 +460,8 @@ export function Flame({ pl, scale = 1 }: { pl: PodLayout; scale?: number }) {
         <meshBasicMaterial color={FLAME_COLOR} transparent opacity={0.85} toneMapped={false} />
       </mesh>
       <mesh position={[0, size * 0.5, 0]}>
-        <coneGeometry args={[size * 0.25, size * 0.9, 10]} />
-        <meshBasicMaterial color="#fde68a" transparent opacity={0.95} toneMapped={false} />
+        <coneGeometry args={[size * 0.26, size * 0.95, 10]} />
+        <meshBasicMaterial color={FLAME_CORE_COLOR} transparent opacity={0.95} toneMapped={false} />
       </mesh>
       <pointLight color={FLAME_COLOR} intensity={2.5} distance={4} decay={2} />
     </group>

@@ -371,7 +371,7 @@ export const CABINETS: Record<CabinetId, CabinetMeta> = {
     demoDescription: 'VPA CPU Startup Boost (4× CPU request during initialization) paired with In-Place Pod Vertical Scaling back to baseline after Ready.',
     namespace: 'arcade-nitro',
     scenario: 'nitro',
-    accent: '#ea4335',
+    accent: '#4285f4',
   },
   metrics: {
     id: 'metrics',
