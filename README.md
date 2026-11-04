@@ -21,7 +21,7 @@ You can also switch the UI between two modes at any time using the top-bar **`[ 
 - **☸️ Demo Lab Mode (`https://autoscale-arcade.demo.gke.ninja/#/demos` or `?mode=demo`):** Pure GKE technical demo mode that removes all game metaphors, scoreboards, coins, and arcade cabinets — showing the full 3D cluster overview, a 7-demo CRD catalog with 1-click **▶ Run Demo** buttons, and straight Kubernetes controller workflows.
 
 > [!NOTE]
-> **Status: design phase.** See [docs/design.md](docs/design.md) for the full design, [docs/adr/](docs/adr/) for decisions, and the [issue tracker](https://github.com/gke-demos/autoscale-arcade/issues) for the build plan. The live demo will be served at `https://autoscale-arcade.demo.gke.ninja` behind Identity-Aware Proxy.
+> **Status: live on GKE Standard 1.37.** Served at `https://autoscale-arcade.demo.gke.ninja` (Arcade Mode) and `https://autoscale-arcade.demo.gke.ninja/#/demos` (Demo Lab Mode) behind Identity-Aware Proxy. See [docs/design.md](docs/design.md) for the full design and [docs/adr/](docs/adr/) for architecture decision records.
 
 ## How it works (in one picture)
 
@@ -57,18 +57,18 @@ docs/kiosk.md        kiosk setup: Chromebook, fullscreen, IAP login, reset drill
 cmd/                 Go entrypoints: server, pet, worker          (one image)
 internal/            world state, actions, scenario runner, k8s clients
 web/                 Vite + React + React Three Fiber UI (embedded into the server binary)
-manifests/           kustomize bases: 00-platform … 06-nitro, 90-gateway
+manifests/           kustomize bases: 00-platform … 07-metrics, 90-gateway
 scenarios/           YAML scripts behind every ▶ button (also runnable from `make play-<cabinet>`)
 hack/                cluster bootstrap, storage/IAM, reset and verify scripts
 .github/workflows/   image build + publish to ghcr.io/gke-demos/autoscale-arcade
 ```
 
-## Run it yourself (preview — fills in as the build lands)
+## Run it yourself
 
 ```sh
 export PROJECT_ID=your-project REGION=us-central1
 make cluster      # GKE Standard 1.37 Rapid: pod snapshots, VPA, WI, gVisor pool, cert-manager, controllers
-make deploy       # arcade-server + all six cabinets + Gateway/IAP
+make deploy       # arcade-server + all seven cabinets + Gateway/IAP
 make play-all     # hands-free run of every cabinet from the terminal
 make reset        # back to the lobby state between visitors
 ```
