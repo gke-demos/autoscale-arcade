@@ -1,7 +1,8 @@
-import { Html } from '@react-three/drei';
+import { Html, RoundedBoxGeometry } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { MOCK } from '../api';
 import { ago, secs, stopwatch } from '../lib/format';
 import { ClusterScene, Flame } from '../scene/ClusterScene';
 import { SLAB } from '../scene/layout';
@@ -20,7 +21,22 @@ function laneMs(lane: NitroLane, nowMs: number): number | undefined {
   const start = lane.createdAt;
   if (!start) return undefined;
   const end = lane.readyAt ? Date.parse(lane.readyAt) : nowMs;
-  return end - Date.parse(start);
+  return Math.max(0, end - Date.parse(start));
+}
+
+function laneProgress(lane: NitroLane, lanes: NitroLane[], factor: number, nowMs: number): number {
+  if (lane.readyAt) return 1;
+  const elapsed = laneMs(lane, nowMs) ?? 0;
+  if (elapsed <= 0) return 0;
+  const nitroLane = lanes.find((l) => l.name === 'nitro');
+  const nitroReadyMs = nitroLane?.readyAt ? laneMs(nitroLane, nowMs) : undefined;
+  const boostFactor = Math.max(2, factor || 4);
+  const mockSpeed = (typeof window !== 'undefined' && (window as unknown as { __MOCK_SPEED?: number }).__MOCK_SPEED) || 1;
+  // Nitro (4x CPU boost: 1000m) finishes warm-up in ~22s on-cluster (~5.9s in mock); Stock (1x CPU: 250m) takes 4x longer.
+  const defaultNitroMs = MOCK ? 5900 / mockSpeed : 22000;
+  const baseNitroMs = nitroReadyMs && nitroReadyMs > 0 ? nitroReadyMs : defaultNitroMs;
+  const expectedMs = lane.name === 'nitro' || lane.boosted ? baseNitroMs : baseNitroMs * boostFactor;
+  return Math.min(0.95, elapsed / expectedMs);
 }
 
 // ---- 3D: two race lanes in front of the node island --------------------------------
@@ -28,11 +44,11 @@ function laneMs(lane: NitroLane, nowMs: number): number | undefined {
 function Scene({ world }: CabinetProps) {
   const layout = useCabinetLayout(world, 'nitro', { extraNodes: (n) => n.pool === 'default-pool' });
   const race = world.cabinets.nitro.race;
+  const factor = world.cabinets.nitro.vpa.factor || 4;
   const now = useNow(100);
   const lanes = useMemo<NitroLane[]>(() => race?.lanes ?? [{ name: 'stock', boosted: false }, { name: 'nitro', boosted: true }], [race]);
   const trackLen = 10;
   const z0 = layout.bounds.maxZ + 2.5;
-  const maxMs = Math.max(20000, ...lanes.map((l) => laneMs(l, now) ?? 0));
 
   return (
     <>
@@ -52,7 +68,7 @@ function Scene({ world }: CabinetProps) {
           <div className="whitespace-nowrap font-mono text-[0.7rem] tracking-[0.3em] text-emerald-300">🏁 READY=TRUE</div>
         </Html>
         {lanes.map((lane, i) => (
-          <Lane key={lane.name} lane={lane} index={i} pod={lanePod(world, lane)} trackLen={trackLen} progress={lane.readyAt ? 1 : Math.min(0.97, (laneMs(lane, now) ?? 0) / maxMs)} winner={race?.winner === lane.name} />
+          <Lane key={lane.name} lane={lane} index={i} pod={lanePod(world, lane)} trackLen={trackLen} progress={laneProgress(lane, lanes, factor, now)} winner={race?.winner === lane.name} />
         ))}
       </group>
     </>
@@ -84,8 +100,8 @@ function Lane({ lane, index, pod, trackLen, progress, winner }: { lane: NitroLan
       </Html>
       <group ref={g} position={[x, SLAB.h / 2 + size / 2 + 0.05, z]}>
         <mesh castShadow>
-          <boxGeometry args={[size, size, size]} />
-          <meshPhysicalMaterial color={color} emissive={color} emissiveIntensity={pod?.ready ? 0.45 : 0.2} roughness={0.1} metalness={0.12} clearcoat={1} clearcoatRoughness={0.06} reflectivity={1} />
+          <RoundedBoxGeometry args={[size, size, size]} radius={0.1} smoothness={3} />
+          <meshPhysicalMaterial color={color} emissive={color} emissiveIntensity={pod?.ready ? 0.35 : 0.12} roughness={0.08} metalness={0.14} clearcoat={1} clearcoatRoughness={0.05} reflectivity={1} />
         </mesh>
         {boosted && <Flame pl={{ pod: pod!, pos: [0, 0, 0], size }} scale={1.4} />}
         {pod && !pod.ready && !boosted && (
@@ -171,10 +187,11 @@ function Controls({ world }: CabinetProps) {
       </ControlGroup>
       <ControlGroup title={isDemo ? 'Workloads (stock vs. nitro)' : 'Lanes'}>
         <div className="flex flex-col gap-2">
-          {(race?.lanes ?? ([{ name: 'stock', boosted: false }, { name: 'nitro', boosted: true }] as NitroLane[])).map((l) => {
+          {(race?.lanes ?? ([{ name: 'stock', boosted: false }, { name: 'nitro', boosted: true }] as NitroLane[])).map((l, _, allLanes) => {
             const ms = laneMs(l, now);
             const pod = lanePod(world, l);
             const color = l.name === 'nitro' ? ACCENT : STOCK;
+            const prog = race ? laneProgress(l, allLanes, n.vpa.factor || 4, now) : 0;
             return (
               <div key={l.name} className="rounded-xl border border-line/80 bg-black/30 p-2">
                 <div className="flex items-center gap-2">
@@ -184,6 +201,15 @@ function Controls({ world }: CabinetProps) {
                   {l.boosted && <Badge tone="bg-[#fbbc04]/25 text-[#fde293]">⚡ boost ×{n.vpa.factor}</Badge>}
                   {race?.winner === l.name && <Badge tone="bg-emerald-500/30 text-emerald-100">{isDemo ? '✓ Ready first' : '🏆 winner'}</Badge>}
                   <span className={`ml-auto font-mono text-[1.3rem] font-bold ${l.readyAt ? 'text-lime-300' : ms !== undefined ? 'text-amber-300' : 'text-slate-500'}`}>{ms !== undefined ? stopwatch(ms) : '--:--.-'}</span>
+                </div>
+                <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full transition-all duration-150"
+                    style={{
+                      width: `${Math.round(prog * 100)}%`,
+                      backgroundColor: l.readyAt ? '#34a853' : color,
+                    }}
+                  />
                 </div>
                 <div className="mt-1 grid grid-cols-3 gap-1 font-mono text-[0.68rem] text-slate-400">
                   <span>

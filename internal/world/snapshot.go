@@ -963,6 +963,18 @@ func (w *World) nitroState(st *WorldState, k8sPods []*corev1.Pod, evs []*corev1.
 	}
 	started, priorUIDs := w.Memory.RaceInfo()
 	if started.IsZero() {
+		for _, p := range k8sPods {
+			if p.Namespace != ns || p.DeletionTimestamp != nil {
+				continue
+			}
+			if raw := p.Annotations["arcade.gke.io/race"]; raw != "" {
+				if t, err := time.Parse(time.RFC3339Nano, raw); err == nil && t.After(started) {
+					started = t
+				}
+			}
+		}
+	}
+	if started.IsZero() {
 		return out
 	}
 	race := &Race{StartedAt: rfc3339(started), Lanes: []Lane{}}
@@ -1027,15 +1039,7 @@ func (w *World) nitroState(st *WorldState, k8sPods []*corev1.Pod, evs []*corev1.
 		}
 	}
 	if winner != "" {
-		allReady := true
-		for _, l := range race.Lanes {
-			if l.ReadyAt == "" && l.Pod != "" {
-				allReady = false
-			}
-		}
-		if allReady {
-			race.Winner = winner
-		}
+		race.Winner = winner
 	}
 	out.Race = race
 	return out
