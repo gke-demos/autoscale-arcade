@@ -40,13 +40,9 @@ spec:
           imagePullPolicy: Always
           args: ["server", "--addr=:8080"]
           ports:
-            - name: http              # UI, /ws, /api, /healthz
-              containerPort: 8080
-            - name: metrics           # same listener; named for ClusterPodMonitoring (05-lights)
+            - name: http              # UI, /ws, /api, /healthz, /metrics
               containerPort: 8080
           env:
-            - name: PROJECT_ID
-              value: gke-demos-345619
             - name: REGION
               value: us-central1
             - name: CLUSTER

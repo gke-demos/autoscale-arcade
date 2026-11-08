@@ -119,7 +119,7 @@ cmd_oauth() {
   fi
   log "Applying GCPBackendPolicy with custom OAuth client (manifests/90-gateway/policies.yaml)"
   kubectl --context "${dst_ctx}" apply -f "${repo_root}/manifests/90-gateway/policies.yaml"
-  cmd_grant domain:google.com domain:gke.ninja
+  cmd_grant domain:google.com domain:gke.ninja domain:event.goog
 }
 
 cmd_status() {

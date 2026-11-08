@@ -47,6 +47,8 @@ spec:
       sectionName: https
   hostnames:
     - autoscale-arcade.demo.gke.ninja
+    - autoscale-arcade-staging.demo.gke.ninja
+    - autoscale-arcade-dev.demo.gke.ninja
   rules:
     - matches:
         - path:
@@ -70,6 +72,8 @@ spec:
       sectionName: http
   hostnames:
     - autoscale-arcade.demo.gke.ninja
+    - autoscale-arcade-staging.demo.gke.ninja
+    - autoscale-arcade-dev.demo.gke.ninja
   rules:
     - filters:
         - type: RequestRedirect
