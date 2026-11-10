@@ -24,7 +24,7 @@
 
 ```mermaid
 flowchart LR
-  A["Attract mode\nidle loop over all cabinets with captions"] -->|touch / click / key| B["Lobby\nsix cabinets on a 3D floor + cluster overview"]
+  A["Attract mode\nidle loop over all cabinets with captions\n(auto-start only on the kiosk: ?kiosk=1)"] -->|touch / click / key| B["Lobby\nsix cabinets on a 3D floor + cluster overview"]
   B --> C["Cabinet\n3D cluster scene · HUD with real YAML/kubectl · controls · ▶ Auto-run"]
   C -->|▶| D["Scenario runner (server-side)\nsteps: action → waitFor → caption"]
   C -->|manual| E["Direct actions\ndrag pod · dial ratio · fire burst · insert coin …"]

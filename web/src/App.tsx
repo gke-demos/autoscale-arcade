@@ -316,21 +316,42 @@ function useKeyboard() {
   }, []);
 }
 
-// ---- attract mode after 90 s idle; any input exits ----------------------------------
+// ---- attract mode: kiosk-only idle loop (?kiosk=1); any input exits; `A` toggles manually ----
 
 function useAttractMode() {
+  const auto = useArcade((s) => s.attractAuto);
   const idleMs = useArcade((s) => s.attractIdleMs);
   const attract = useArcade((s) => s.world?.scenario.attract ?? false);
   const running = useArcade((s) => s.world?.scenario.running ?? false);
   const setView = useArcade((s) => s.setView);
   const cabinet = useArcade((s) => s.world?.scenario.cabinet);
 
-  // start attract after idle (only in Arcade mode)
+  // pointer movement / scrolling counts as presence too (throttled), not just clicks and keys
   useEffect(() => {
+    let last = 0;
+    const mark = () => {
+      const now = Date.now();
+      if (now - last < 1000) return;
+      last = now;
+      useArcade.getState().touch();
+    };
+    const opts = { capture: true, passive: true } as const;
+    window.addEventListener('pointermove', mark, opts);
+    window.addEventListener('wheel', mark, opts);
+    return () => {
+      window.removeEventListener('pointermove', mark, opts);
+      window.removeEventListener('wheel', mark, opts);
+    };
+  }, []);
+
+  // start attract after idle (only on an opted-in kiosk, only in Arcade mode)
+  useEffect(() => {
+    if (!auto) return;
     const id = window.setInterval(() => {
       const s = useArcade.getState();
       if (s.mode === 'demo') return;
       if (!s.world || s.world.scenario.running || s.drag) return;
+      if (document.hidden) return;
       if (Date.now() - s.lastInput > idleMs) {
         // an abandoned score prompt / modal must not keep the kiosk out of attract mode
         if (s.leaderboardPrompt || s.showLeaderboard || s.showHelp) {
@@ -342,7 +363,7 @@ function useAttractMode() {
       }
     }, 5000);
     return () => window.clearInterval(id);
-  }, [idleMs]);
+  }, [auto, idleMs]);
 
   // exit attract on any input
   useEffect(() => {

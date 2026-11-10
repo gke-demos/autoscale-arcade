@@ -235,7 +235,7 @@ export function HelpOverlay() {
     ['Space', isDemo ? '▶ auto-run current demo' : '▶ auto-run current cabinet'],
     ['R', isDemo ? 'reset current demo workload' : 'reset current cabinet'],
     ['M', 'toggle Arcade Mode / Demo Lab'],
-    ...(!isDemo ? ([['A', 'toggle attract mode']] as [string, string][]) : []),
+    ...(!isDemo ? ([['A', 'toggle attract mode (auto-start after idle only with ?kiosk=1)']] as [string, string][]) : []),
     ['F', 'fullscreen'],
     ['← →', isDemo ? 'previous / next demo' : 'previous / next cabinet'],
     ['?', 'this help'],

@@ -14,7 +14,7 @@ Autoscale Arcade is an interactive, WebGL-powered kiosk demo built for **KubeCon
 | **Nitro** | [CPU Startup Boost](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/boost-application-startup) (VPA `startupBoost`) | Two identical pods race to `Ready`. One has nitro. |
 | **Metric Dialer** | [Autoscale workloads on Prometheus metrics](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/autoscale-using-metrics) (`AutoscalingMetric` + HPA `External` metric, `maxReplicas: 10`) | Slide the custom metric load (`0–500` req/s) to hit the target pod count (`1..10`). |
 
-Each cabinet can be played **manually** (touch or mouse/keyboard) or run hands-free with a **▶ Auto-run** button; an **attract mode** loops through all seven while nobody is at the pedestal.
+Each cabinet can be played **manually** (touch or mouse/keyboard) or run hands-free with a **▶ Auto-run** button; an **attract mode** loops through all seven while nobody is at the pedestal. Attract mode runs server-side (every connected screen follows it), so the idle auto-start is **opt-in for the booth kiosk only**: open `https://autoscale-arcade.demo.gke.ninja/?kiosk=1#/` (or `?attract=<seconds>`) on the pedestal browser; it is remembered in that browser until you open `?kiosk=0`. Everyone else gets manual control only (`A` toggles attract on demand).
 
 You can also switch the UI between two modes at any time using the top-bar **`[ 🕹️ Arcade | ☸️ Demo Lab ]`** toggle (or keyboard shortcut `M`):
 - **🕹️ Arcade Mode (`https://autoscale-arcade.demo.gke.ninja/#/`):** Booth game mode with 3D arcade cabinets, 3-step mission checklists, scoreboards, coins, target pod challenges, leaderboard, and attract mode.
